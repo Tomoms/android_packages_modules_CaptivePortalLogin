@@ -266,6 +266,11 @@ public class CaptivePortalLoginActivityTest {
         }
 
         @Override
+        Context getContextForCustomTabsBinding() {
+            return this;
+        }
+
+        @Override
         public void startActivity(Intent intent) {
             if (Intent.ACTION_VIEW.equals(intent.getAction())
                     && intent.getData() != null
@@ -288,7 +293,7 @@ public class CaptivePortalLoginActivityTest {
         }
 
         @Override
-        int getCustomTabsProviderUid(@NonNull final String customTabsProviderPackageName)
+        int getPackageUid(@NonNull final String customTabsProviderPackageName)
                 throws NameNotFoundException {
             return TEST_CUSTOM_TABS_PROVIDER_UID;
         }
@@ -302,6 +307,11 @@ public class CaptivePortalLoginActivityTest {
         boolean isFeatureEnabled(final String name) {
             if (sFeatureFlags.get(name) == null) return false;
             return sFeatureFlags.get(name);
+        }
+
+        @Override
+        boolean getDeviceConfigPropertyBoolean(final String name, boolean defaultValue) {
+            return defaultValue;
         }
     }
 
