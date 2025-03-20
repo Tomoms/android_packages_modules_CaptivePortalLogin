@@ -624,14 +624,6 @@ public class CaptivePortalLoginActivity extends Activity {
     private String getCustomTabsProviderPackageIfEnabled() {
         if (!mCaptivePortalCustomTabsEnabled) return null;
 
-        // TODO: b/330670424 - check if privacy settings such as private DNS is bypassable,
-        // otherwise, fallback to WebView.
-        final LinkProperties lp = mCm.getLinkProperties(mNetwork);
-        if (lp == null || lp.getPrivateDnsServerName() != null) {
-            Log.i(TAG, "Do not use custom tabs if private DNS (strict mode) is enabled");
-            return null;
-        }
-
         final String defaultPackage = getDefaultCustomTabsProviderPackage();
         if (null != defaultPackage && isMultiNetworkingSupportedByProvider(defaultPackage)) {
             return defaultPackage;
