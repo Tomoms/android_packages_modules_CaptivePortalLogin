@@ -24,7 +24,6 @@ import android.content.ServiceConnection
 import android.content.res.Configuration
 import android.net.Network
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Parcel
@@ -32,7 +31,6 @@ import android.os.Parcelable
 import android.os.SystemClock
 import android.util.Log
 import android.widget.TextView
-import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -48,11 +46,6 @@ import androidx.test.uiautomator.Until
 import com.android.captiveportallogin.DownloadService.DOWNLOAD_ABORTED_REASON_FILE_TOO_LARGE
 import com.android.captiveportallogin.DownloadService.DownloadServiceBinder
 import com.android.captiveportallogin.DownloadService.ProgressCallback
-import com.android.modules.utils.build.SdkLevel.isAtLeastS
-import com.android.testutils.ConnectivityDiagnosticsCollector
-import com.android.testutils.DeviceInfoUtils
-import com.android.testutils.runCommandInRootShell
-import com.android.testutils.runCommandInShell
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -72,15 +65,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
-import org.junit.AfterClass
 import org.junit.Assert.assertNotNull
 import org.junit.Assume.assumeFalse
 import org.junit.Before
-import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TestWatcher
-import org.junit.runner.Description
 import org.junit.runner.RunWith
 import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.mock
@@ -126,65 +115,6 @@ val mServiceRule = ServiceTestRule()
 @RunWith(AndroidJUnit4::class)
 @SmallTest
 class DownloadServiceTest {
-    companion object {
-        private var originalTraceBufferSizeKb = 0
-
-        // To identify which process is deleting test files during the run (b/317602748), enable
-        // tracing for file deletion in f2fs (the filesystem used for /data on test devices) and
-        // process creation/exit
-        private const val tracePath = "/sys/kernel/tracing"
-        private val traceEnablePaths = listOf(
-            "$tracePath/events/f2fs/f2fs_unlink_enter/enable",
-            "$tracePath/events/sched/sched_process_exec/enable",
-            "$tracePath/events/sched/sched_process_fork/enable",
-            "$tracePath/events/sched/sched_process_exit/enable",
-            "$tracePath/tracing_on"
-        )
-
-        @JvmStatic
-        @BeforeClass
-        fun setUpClass() {
-            if (!enableTracing()) return
-            val originalSize = runCommandInShell("cat $tracePath/buffer_size_kb").trim()
-            // Buffer size may be small on boot when tracing is disabled, and automatically expanded
-            // when enabled (buffer_size_kb will report  something like: "7 (expanded: 1408)"). As
-            // only fixed values can be used when resetting, reset to the expanded size in that
-            // case.
-            val match = Regex("([0-9]+)|[0-9]+ \\(expanded: ([0-9]+)\\)")
-                .matchEntire(originalSize)
-                ?: fail("Could not parse original buffer size: $originalSize")
-            originalTraceBufferSizeKb = (match.groups[2]?.value ?: match.groups[1]?.value)?.toInt()
-                ?: fail("Buffer size not found in $originalSize")
-            traceEnablePaths.forEach {
-                runCommandInRootShell("echo 1 > $it")
-            }
-            runCommandInRootShell("echo 96000 > $tracePath/buffer_size_kb")
-        }
-
-        @JvmStatic
-        @AfterClass
-        fun tearDownClass() {
-            if (!enableTracing()) return
-            traceEnablePaths.asReversed().forEach {
-                runCommandInRootShell("echo 0 > $it")
-            }
-            runCommandInRootShell("echo $originalTraceBufferSizeKb > $tracePath/buffer_size_kb")
-        }
-
-        @ChecksSdkIntAtLeast(Build.VERSION_CODES.S)
-        fun enableTracing() = DeviceInfoUtils.isDebuggable() && isAtLeastS()
-    }
-
-    @get:Rule
-    val collectTraceOnFailureRule = object : TestWatcher() {
-        override fun failed(e: Throwable, description: Description) {
-            if (!enableTracing()) return
-            ConnectivityDiagnosticsCollector.instance?.let {
-                it.collectCommandOutput("su 0 cat $tracePath/trace")
-            }
-        }
-    }
-
     private val connection = mock(HttpURLConnection::class.java)
 
     private val context by lazy { getInstrumentation().context }
