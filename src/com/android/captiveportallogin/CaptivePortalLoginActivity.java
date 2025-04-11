@@ -289,6 +289,10 @@ public class CaptivePortalLoginActivity extends Activity {
                     // Don't hide the URL bar when scrolling down, to make sure the user is always
                     // aware they are on the page from a captive portal.
                     .setUrlBarHidingEnabled(false)
+                    // Remove the close button from tab.
+                    // TODO: remove above temporary workaround: setCloseButtonIcon with an empty
+                    // close button icon once all custom tabs provider support this API.
+                    .setCloseButtonEnabled(false)
                     .build();
 
             // Remove Referrer Header from HTTP probe packet by setting an empty Uri
