@@ -594,7 +594,7 @@ public class CaptivePortalLoginActivity extends Activity {
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
-    private boolean bypassVpnForCustomTabsProvider(
+    private boolean bypassVpnAndPrivateDnsForCustomTabsProvider(
             @NonNull final String customTabsProviderPackageName,
             @NonNull final OutcomeReceiver<Void, ServiceSpecificException> receiver) {
         final Class captivePortalClass = mCaptivePortal.getClass();
@@ -733,11 +733,10 @@ public class CaptivePortalLoginActivity extends Activity {
             } else {
                 mPersistentState.mServiceConnection =
                         new CaptivePortalCustomTabsServiceConnection(this);
-                // TODO: Fall back to WebView iff VPN is enabled and the custom tabs provider is not
-                // allowed to bypass VPN, e.g. an error or exception happens when calling the
-                // {@link CaptivePortal#setDelegateUid} API. Otherwise, force launch the custom tabs
-                // even if VPN cannot be bypassed.
-                final boolean success = bypassVpnForCustomTabsProvider(
+                // TODO: Fall back to WebView if the custom tabs provider is not allowed to
+                // bypass VPN or private DNS, e.g. an error or exception happens when calling
+                // the {@link CaptivePortal#setDelegateUid} API.
+                final boolean success = bypassVpnAndPrivateDnsForCustomTabsProvider(
                         customTabsProviderPackageName,
                         new OutcomeReceiver<Void, ServiceSpecificException>() {
                             // TODO: log the callback result metrics.
