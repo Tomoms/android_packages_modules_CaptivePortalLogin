@@ -595,6 +595,7 @@ public class CaptivePortalLoginActivityTest {
     }
 
     @Test @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = false)
     public void testVpnMsgOrLinkToBrowser() throws Exception {
         // After Android R(including), DevicePolicyManager allows the caller who has the
         // PERMISSION_MAINLINE_NETWORK_STACK can call the isAlwaysOnVpnLockdownEnabled() to get the
