@@ -598,7 +598,7 @@ public class CaptivePortalLoginActivity extends Activity {
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
-    private boolean bypassVpnForCustomTabsProvider(
+    private boolean bypassVpnAndPrivateDnsForCustomTabsProvider(
             @NonNull final String customTabsProviderPackageName,
             @NonNull final OutcomeReceiver<Void, ServiceSpecificException> receiver) {
         final Class captivePortalClass = mCaptivePortal.getClass();
@@ -623,14 +623,6 @@ public class CaptivePortalLoginActivity extends Activity {
     @Nullable
     private String getCustomTabsProviderPackageIfEnabled() {
         if (!mCaptivePortalCustomTabsEnabled) return null;
-
-        // TODO: b/330670424 - check if privacy settings such as private DNS is bypassable,
-        // otherwise, fallback to WebView.
-        final LinkProperties lp = mCm.getLinkProperties(mNetwork);
-        if (lp == null || lp.getPrivateDnsServerName() != null) {
-            Log.i(TAG, "Do not use custom tabs if private DNS (strict mode) is enabled");
-            return null;
-        }
 
         final String defaultPackage = getDefaultCustomTabsProviderPackage();
         if (null != defaultPackage && isMultiNetworkingSupportedByProvider(defaultPackage)) {
@@ -737,11 +729,10 @@ public class CaptivePortalLoginActivity extends Activity {
             } else {
                 mPersistentState.mServiceConnection =
                         new CaptivePortalCustomTabsServiceConnection(this);
-                // TODO: Fall back to WebView iff VPN is enabled and the custom tabs provider is not
-                // allowed to bypass VPN, e.g. an error or exception happens when calling the
-                // {@link CaptivePortal#setDelegateUid} API. Otherwise, force launch the custom tabs
-                // even if VPN cannot be bypassed.
-                final boolean success = bypassVpnForCustomTabsProvider(
+                // TODO: Fall back to WebView if the custom tabs provider is not allowed to
+                // bypass VPN or private DNS, e.g. an error or exception happens when calling
+                // the {@link CaptivePortal#setDelegateUid} API.
+                final boolean success = bypassVpnAndPrivateDnsForCustomTabsProvider(
                         customTabsProviderPackageName,
                         new OutcomeReceiver<Void, ServiceSpecificException>() {
                             // TODO: log the callback result metrics.

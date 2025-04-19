@@ -166,6 +166,7 @@ public class CaptivePortalLoginActivityTest {
     private static final String TEST_PORTAL_HOSTNAME = "localhost";
     private static final String TEST_CUSTOM_TABS_PACKAGE_NAME = "com.android.customtabs";
     private static final String TEST_WIFI_CONFIG_TYPE = "application/x-wifi-config";
+    private static final String TEST_PRIVATE_DNS_SERVER = "dns.server";
     private static final String TEST_DOWNLOAD_SERVICE_COMPONENT_CLASS_NAME =
             DownloadService.class.getName();
     private ActivityScenario<InstrumentedCaptivePortalLoginActivity> mActivityScenario;
@@ -594,6 +595,7 @@ public class CaptivePortalLoginActivityTest {
     }
 
     @Test @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = false)
     public void testVpnMsgOrLinkToBrowser() throws Exception {
         // After Android R(including), DevicePolicyManager allows the caller who has the
         // PERMISSION_MAINLINE_NETWORK_STACK can call the isAlwaysOnVpnLockdownEnabled() to get the
@@ -1162,9 +1164,16 @@ public class CaptivePortalLoginActivityTest {
         server.stop();
     }
 
-    private void runCaptivePortalUsingCustomTabsTest(boolean isVpnBypassable) {
-        sIsMultiNetworkingSupportedByProvider = true;
+    private LinkProperties makeLinkPropertiesWithPrivateDns() {
         final LinkProperties linkProperties = new LinkProperties();
+        linkProperties.setUsePrivateDns(true);
+        linkProperties.setPrivateDnsServerName(TEST_PRIVATE_DNS_SERVER);
+        return linkProperties;
+    }
+
+    private void runCaptivePortalUsingCustomTabsTest(boolean isDelegateUidSetSuccessfully,
+            final LinkProperties linkProperties) {
+        sIsMultiNetworkingSupportedByProvider = true;
         doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
 
         // Set up result stubbing for the CustomTabsIntent#launchUrl, this stub should be
@@ -1175,15 +1184,13 @@ public class CaptivePortalLoginActivityTest {
                 .respondWith(new ActivityResult(RESULT_OK, null));
         initActivity(TEST_URL);
         final MockCaptivePortal cp = getCaptivePortal();
-        if (isVpnBypassable) {
+        if (isDelegateUidSetSuccessfully) {
             mActivityScenario.onActivity(a -> cp.mDelegateUidReceiver.onResult(null));
         } else {
             mActivityScenario.onActivity(a -> cp.mDelegateUidReceiver.onError(
                     new ServiceSpecificException(OsConstants.EBUSY)));
         }
 
-        // TODO: check the WebView should be initialized if VPN is not allowed to bypass. So far
-        // we force launch the custom tab even if VPN cannot be bypassed in production code.
         final ArgumentCaptor<CustomTabsCallback> captor =
                 ArgumentCaptor.forClass(CustomTabsCallback.class);
         verify(sMockCustomTabsClient, timeout(TEST_TIMEOUT_MS)).newSession(captor.capture());
@@ -1203,15 +1210,55 @@ public class CaptivePortalLoginActivityTest {
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.R)
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
-    public void testCaptivePortalUsingCustomTabs() throws Exception {
-        runCaptivePortalUsingCustomTabsTest(true /* isVpnBypassable */);
+    public void testCaptivePortalUsingCustomTabs_privateDnsOn_bypassVpnOrPrivateDnsSuccess()
+            throws Exception {
+        final LinkProperties lp = makeLinkPropertiesWithPrivateDns();
+        runCaptivePortalUsingCustomTabsTest(true /* isDelegateUidSetSuccessfully */, lp);
     }
 
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.R)
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
-    public void testCaptivePortalUsingCustomTabs_bypassVpnFailure() throws Exception {
-        runCaptivePortalUsingCustomTabsTest(false /* isVpnBypassable */);
+    public void testCaptivePortalUsingCustomTabs_privateDnsOn_bypassVpnOrPrivateDnsFailure()
+            throws Exception {
+        final LinkProperties lp = makeLinkPropertiesWithPrivateDns();
+        runCaptivePortalUsingCustomTabsTest(false /* isDelegateUidSetSuccessfully */, lp);
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalUsingCustomTabs_privateDnsOff_bypassVpnOrPrivateDnsSuccess()
+            throws Exception {
+        final LinkProperties lp = new LinkProperties();
+        runCaptivePortalUsingCustomTabsTest(true /* isDelegateUidSetSuccessfully */, lp);
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalUsingCustomTabs_privateDnsOff_bypassVpnOrPrivateDnsFailure()
+            throws Exception {
+        final LinkProperties lp = new LinkProperties();
+        runCaptivePortalUsingCustomTabsTest(false /* isDelegateUidSetSuccessfully */, lp);
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalUsingCustomTabs_nullLinkProperties_bypassVpnOrPrivateDnsSuccess()
+            throws Exception {
+        runCaptivePortalUsingCustomTabsTest(true /* isDelegateUidSetSuccessfully */,
+                null /* LinkProperties */);
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalUsingCustomTabs_nullLinkProperties_bypassVpnOrPrivateDnsFailure()
+            throws Exception {
+        runCaptivePortalUsingCustomTabsTest(false /* isDelegateUidSetSuccessfully */,
+                null /* LinkProperties */);
     }
 
     private void verifyWebViewInitialization() {
@@ -1241,14 +1288,6 @@ public class CaptivePortalLoginActivityTest {
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = false)
     public void testCaptivePortalUsingCustomTabs_flagOff() throws Exception {
         sIsMultiNetworkingSupportedByProvider = true;
-        verifyUsingWebViewRatherThanCustomTabs();
-    }
-
-    @Test
-    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
-    public void testCaptivePortalUsingCustomTabs_nullLinkProperties() throws Exception {
-        sIsMultiNetworkingSupportedByProvider = true;
-        doReturn(null).when(sConnectivityManager).getLinkProperties(mNetwork);
         verifyUsingWebViewRatherThanCustomTabs();
     }
 
