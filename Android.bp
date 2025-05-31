@@ -81,6 +81,10 @@ android_app {
     jarjar_rules: ":CaptivePortalLoginJarJarRules",
     certificate: "networkstack",
     updatable: true,
+    licenses: [
+        "Android-Apache-2.0",
+        "opensourcerequest",
+    ],
 }
 
 android_library {
