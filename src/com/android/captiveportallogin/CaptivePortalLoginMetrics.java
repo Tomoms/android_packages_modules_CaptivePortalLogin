@@ -84,6 +84,17 @@ public class CaptivePortalLoginMetrics {
     public @interface UseWebViewReson {}
 
     /**
+     * Reset all metrics members.
+     */
+    public void reset() {
+        mUid = Process.INVALID_UID;
+        mCaptivePortalResult =
+                CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_UNKNOWN;
+        mCaptivePortalUsingWebviewReason =
+                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_UNKNOWN;
+    }
+
+    /**
      * Set the UID of the app showing the portal.
      */
     public void setUid(final int uid) {
