@@ -35,7 +35,10 @@ java_defaults {
 android_library {
     name: "CaptivePortalLoginLib",
     defaults: ["CaptivePortalLoginDefaults"],
-    srcs: ["src/**/*.java"],
+    srcs: [
+        "src/**/*.java",
+        ":statslog-captiveportallogin-java-gen",
+    ],
     static_libs: [
         "androidx.annotation_annotation",
         "androidx.browser_browser",
@@ -49,6 +52,7 @@ android_library {
         "framework-configinfrastructure.stubs.module_lib",
         "framework-connectivity.stubs.module_lib",
         "framework-mediaprovider.stubs.module_lib",
+        "framework-statsd.stubs.module_lib",
         "framework-wifi.stubs.module_lib",
     ],
     manifest: "AndroidManifest.xml",
@@ -97,4 +101,13 @@ android_library {
     lint: {
         strict_updatability_linting: true,
     },
+}
+
+genrule {
+    name: "statslog-captiveportallogin-java-gen",
+    tools: ["stats-log-api-gen"],
+    cmd: "$(location stats-log-api-gen) --java $(out) --module captive_portal_login" +
+        " --javaPackage com.android.os.corenetworking.captiveportallogin --javaClass CaptivePortalLoginStatsLog" +
+        " --minApiLevel 30",
+    out: ["com/android/os/corenetworking/captiveportallogin/CaptivePortalLoginStatsLog.java"],
 }
