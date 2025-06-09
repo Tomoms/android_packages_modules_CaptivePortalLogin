@@ -127,6 +127,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -245,8 +246,12 @@ public class CaptivePortalLoginActivity extends Activity {
                     R.id.custom_tab_header_remaining_space);
             int availableSpace = remainingSpaceView.getHeight();
             if (availableSpace < 100) {
-                // In some situations the layout pass is not done ? Not sure why yet but
-                // as a stopgap use a fixed value
+                // If for some reason the height of the view can't be obtained, do not crash.
+                // This used to happen when this code would run before the first layout pass.
+                // This bug should be fixed now, but layout is notoriously difficult to get and
+                // if for any reason there is still an issue it is better to use this estimate
+                // than to crash.
+                Log.wtf(TAG, "Remaining space can't be obtained. Layout not done ?");
                 final Rect windowSize =
                         mParent.getWindowManager().getCurrentWindowMetrics().getBounds();
                 final int top = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
@@ -724,8 +729,17 @@ public class CaptivePortalLoginActivity extends Activity {
                 mPersistentState.mCallback = new CaptivePortalCustomTabsCallback(this);
             }
 
+            final CompletableFuture<Boolean> serviceConnected = new CompletableFuture<>();
+            final CompletableFuture<Boolean> layoutDone = new CompletableFuture<>();
+            CompletableFuture.allOf(serviceConnected, layoutDone)
+                    .thenRun(() -> bindCustomTabsService(customTabsProviderPackageName));
+
+            final View remainingSpaceView = findViewById(R.id.custom_tab_header_remaining_space);
+            remainingSpaceView.getViewTreeObserver().addOnGlobalLayoutListener(
+                    () -> layoutDone.complete(true));
             if (mPersistentState.mServiceConnection != null) {
                 mPersistentState.mServiceConnection.reparent(this);
+                serviceConnected.complete(true);
             } else {
                 mPersistentState.mServiceConnection =
                         new CaptivePortalCustomTabsServiceConnection(this);
@@ -734,14 +748,14 @@ public class CaptivePortalLoginActivity extends Activity {
                 // the {@link CaptivePortal#setDelegateUid} API.
                 final boolean success = bypassVpnAndPrivateDnsForCustomTabsProvider(
                         customTabsProviderPackageName,
-                        new OutcomeReceiver<Void, ServiceSpecificException>() {
+                        new OutcomeReceiver<>() {
                             // TODO: log the callback result metrics.
                             @Override
                             public void onResult(Void r) {
                                 Log.d(TAG, "Set delegate uid for "
                                         + customTabsProviderPackageName
                                         + " to bypass VPN successfully");
-                                bindCustomTabsService(customTabsProviderPackageName);
+                                serviceConnected.complete(true);
                             }
 
                             @Override
@@ -749,11 +763,11 @@ public class CaptivePortalLoginActivity extends Activity {
                                 Log.e(TAG, "Fail to set delegate uid for "
                                         + customTabsProviderPackageName + " to bypass VPN"
                                         + ", error: " + OsConstants.errnoName(e.errorCode), e);
-                                bindCustomTabsService(customTabsProviderPackageName);
+                                serviceConnected.complete(false);
                             }
                         });
                 if (!success) { // caught an exception
-                    bindCustomTabsService(customTabsProviderPackageName);
+                    serviceConnected.complete(false);
                 }
             }
         }
