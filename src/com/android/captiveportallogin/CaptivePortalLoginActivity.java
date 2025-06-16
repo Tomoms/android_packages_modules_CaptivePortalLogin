@@ -36,7 +36,9 @@ import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Rect;
 import android.net.CaptivePortal;
@@ -76,7 +78,9 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.SslErrorHandler;
@@ -127,6 +131,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -245,8 +250,12 @@ public class CaptivePortalLoginActivity extends Activity {
                     R.id.custom_tab_header_remaining_space);
             int availableSpace = remainingSpaceView.getHeight();
             if (availableSpace < 100) {
-                // In some situations the layout pass is not done ? Not sure why yet but
-                // as a stopgap use a fixed value
+                // If for some reason the height of the view can't be obtained, do not crash.
+                // This used to happen when this code would run before the first layout pass.
+                // This bug should be fixed now, but layout is notoriously difficult to get and
+                // if for any reason there is still an issue it is better to use this estimate
+                // than to crash.
+                Log.wtf(TAG, "Remaining space can't be obtained. Layout not done ?");
                 final Rect windowSize =
                         mParent.getWindowManager().getCurrentWindowMetrics().getBounds();
                 final int top = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
@@ -528,14 +537,13 @@ public class CaptivePortalLoginActivity extends Activity {
         return getApplicationContext();
     }
 
-    private void applyWindowInsets(final int resourceId) {
-        if (!SdkLevel.isAtLeastV()) return;
+    private void setApplyWindowInsetsListener(final int resourceId, final boolean insetBottom) {
         final View view = findViewById(resourceId);
         view.setOnApplyWindowInsetsListener((v, windowInsets) -> {
             final Insets insets = windowInsets.getInsets(WindowInsets.Type.systemBars());
-            v.setPadding(0 /* left */, insets.top /* top */, 0 /* right */,
-                    0 /* bottom */);
-            return windowInsets.inset(0, insets.top, 0, 0);
+            final int bottom = insetBottom ? insets.bottom : 0;
+            v.setPadding(0 /* left */, insets.top /* top */, 0 /* right */, bottom);
+            return windowInsets.inset(0, insets.top, 0, bottom);
         });
     }
 
@@ -546,7 +554,12 @@ public class CaptivePortalLoginActivity extends Activity {
         getActionBar().hide();
         final TextView headerTitle = findViewById(R.id.custom_tab_header_title);
         headerTitle.setText(getHeaderTitle());
-        applyWindowInsets(R.id.custom_tab_header_top_bar);
+        // To figure out the initial activity height of the custom tab, the captive
+        // portal login app will leave space at the bottom and measure that space. Since
+        // the custom tab does not inset its view to fit the bottom system windows, the
+        // captive portal app also shouldn't so that the computation will match. Hence
+        // insetBottom = false.
+        setApplyWindowInsetsListener(R.id.custom_tab_header_top, false /* insetBottom */);
     }
 
     private void initializeWebView() {
@@ -563,7 +576,11 @@ public class CaptivePortalLoginActivity extends Activity {
         getActionBar().setTitle(getHeaderTitle());
         getActionBar().setSubtitle("");
 
-        applyWindowInsets(R.id.container);
+        // In webview mode, the captive portal login app does not want to draw below the
+        // system bars, either at the top or the bottom, so apply insets both on the top and
+        // the bottom of the window. Note that on V+ the app is forced into edge-to-edge mode,
+        // so for simplicity it also sets itself edge-to-edge on lower SDKs.
+        setApplyWindowInsetsListener(R.id.container, true /* insetBottom */);
 
         final WebView webview = getWebview();
         webview.clearCache(true);
@@ -645,6 +662,38 @@ public class CaptivePortalLoginActivity extends Activity {
         return mPersistentState;
     }
 
+    private void enableEdgeToEdge() {
+        // V and above is already always edge to edge (and it can't be turned off).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) return;
+
+        // Taken and adapted from androidx.activity.ComponentActivity#enableEdgeToEdge
+        final Window window = getWindow();
+        window.setDecorFitsSystemWindows(false);
+
+        final View decorView = window.getDecorView();
+        final int viewNightMode = decorView.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK;
+        final boolean systemBarsAreDark = Configuration.UI_MODE_NIGHT_YES == viewNightMode;
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        window.setStatusBarContrastEnforced(false);
+        window.setNavigationBarContrastEnforced(true);
+
+        final int systemUiVisibility = decorView.getSystemUiVisibility();
+        if (systemBarsAreDark) {
+            decorView.setSystemUiVisibility(
+                    systemUiVisibility & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        } else {
+            decorView.setSystemUiVisibility(
+                    systemUiVisibility | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        }
+        final WindowInsetsController insetsController = window.getInsetsController();
+        if (null == insetsController) return;
+        insetsController.setSystemBarsAppearance(
+                systemBarsAreDark ? 0 : WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+    }
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -717,6 +766,7 @@ public class CaptivePortalLoginActivity extends Activity {
         if (customTabsProviderPackageName == null || !SdkLevel.isAtLeastS()) {
             initializeWebView();
         } else {
+            enableEdgeToEdge();
             initializeCustomTabHeader();
             if (mPersistentState.mCallback != null) {
                 mPersistentState.mCallback.reparent(this);
@@ -724,8 +774,17 @@ public class CaptivePortalLoginActivity extends Activity {
                 mPersistentState.mCallback = new CaptivePortalCustomTabsCallback(this);
             }
 
+            final CompletableFuture<Boolean> serviceConnected = new CompletableFuture<>();
+            final CompletableFuture<Boolean> layoutDone = new CompletableFuture<>();
+            CompletableFuture.allOf(serviceConnected, layoutDone)
+                    .thenRun(() -> bindCustomTabsService(customTabsProviderPackageName));
+
+            final View remainingSpaceView = findViewById(R.id.custom_tab_header_remaining_space);
+            remainingSpaceView.getViewTreeObserver().addOnGlobalLayoutListener(
+                    () -> layoutDone.complete(true));
             if (mPersistentState.mServiceConnection != null) {
                 mPersistentState.mServiceConnection.reparent(this);
+                serviceConnected.complete(true);
             } else {
                 mPersistentState.mServiceConnection =
                         new CaptivePortalCustomTabsServiceConnection(this);
@@ -734,14 +793,14 @@ public class CaptivePortalLoginActivity extends Activity {
                 // the {@link CaptivePortal#setDelegateUid} API.
                 final boolean success = bypassVpnAndPrivateDnsForCustomTabsProvider(
                         customTabsProviderPackageName,
-                        new OutcomeReceiver<Void, ServiceSpecificException>() {
+                        new OutcomeReceiver<>() {
                             // TODO: log the callback result metrics.
                             @Override
                             public void onResult(Void r) {
                                 Log.d(TAG, "Set delegate uid for "
                                         + customTabsProviderPackageName
                                         + " to bypass VPN successfully");
-                                bindCustomTabsService(customTabsProviderPackageName);
+                                serviceConnected.complete(true);
                             }
 
                             @Override
@@ -749,11 +808,11 @@ public class CaptivePortalLoginActivity extends Activity {
                                 Log.e(TAG, "Fail to set delegate uid for "
                                         + customTabsProviderPackageName + " to bypass VPN"
                                         + ", error: " + OsConstants.errnoName(e.errorCode), e);
-                                bindCustomTabsService(customTabsProviderPackageName);
+                                serviceConnected.complete(false);
                             }
                         });
                 if (!success) { // caught an exception
-                    bindCustomTabsService(customTabsProviderPackageName);
+                    serviceConnected.complete(false);
                 }
             }
         }

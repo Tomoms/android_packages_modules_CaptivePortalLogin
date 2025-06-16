@@ -17,12 +17,11 @@
 
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    android:fitsSystemWindows="true"
+    android:id="@+id/custom_tab_header_top"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
     <LinearLayout
-        android:id="@+id/custom_tab_header_top_bar"
         style="@android:style/Widget.Material.ActionBar.Solid"
         android:layout_width="match_parent"
         android:layout_height="@dimen/custom_tab_header_title_height"
