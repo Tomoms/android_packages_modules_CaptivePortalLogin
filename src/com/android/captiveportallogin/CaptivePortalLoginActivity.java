@@ -40,6 +40,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Insets;
@@ -171,13 +172,21 @@ public class CaptivePortalLoginActivity extends Activity {
             "com.android.captiveportallogin.CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED";
     private static final String ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED =
             "com.android.captiveportallogin.CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED";
+    private static final String ACTION_CUSTOM_TABS_MENU_ITEM_USE_OLD_INTERFACE_CLICKED =
+            "com.android.captiveportallogin.CUSTOM_TABS_MENU_ITEM_USE_OLD_INTERFACE_CLICKED";
+    @VisibleForTesting
+    public static final String EXTRA_USE_OLD_INTERFACE =
+            "com.android.captiveportallogin.EXTRA_USE_OLD_INTERFACE";
     private static final String EXTRA_CUSTOM_TABS_INSTANCE_TOKEN =
             "com.android.captiveportallogin.CUSTOM_TABS_INSTANCE_TOKEN";
     private static final int DO_NOT_USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE = 1001;
     private static final int USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE = 1002;
+    private static final int USE_OLD_INTERFACE_PENDING_INTENT_REQUEST_CODE = 1003;
 
     private URL mUrl;
+    private String mUrlString;
     private CaptivePortalProbeSpec mProbeSpec;
+    private String mProbeSpecString;
     private String mUserAgent;
     private Network mNetwork;
     private CharSequence mVenueFriendlyName = null;
@@ -266,6 +275,17 @@ public class CaptivePortalLoginActivity extends Activity {
                 done(Result.UNWANTED);
             } else if (action.equals(ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED)) {
                 done(Result.WANTED_AS_IS);
+            } else if (action.equals(ACTION_CUSTOM_TABS_MENU_ITEM_USE_OLD_INTERFACE_CLICKED)) {
+                finishAndRemoveTask();
+
+                final Bundle extras = new Bundle();
+                extras.putParcelable(ConnectivityManager.EXTRA_NETWORK, mNetwork);
+                extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL, mUrlString);
+                extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_PROBE_SPEC,
+                        mProbeSpecString);
+                extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_USER_AGENT, mUserAgent);
+                extras.putBoolean(EXTRA_USE_OLD_INTERFACE, true);
+                startActivityFromCustomTabsMenuItem(mNetwork, extras);
             } else {
                 Log.e(TAG, "unknown menu action " + action);
             }
@@ -588,6 +608,12 @@ public class CaptivePortalLoginActivity extends Activity {
         return getApplicationContext();
     }
 
+    @VisibleForTesting
+    void startActivityFromCustomTabsMenuItem(@NonNull final Network network,
+            @NonNull final Bundle intentExtras) {
+        mCm.startCaptivePortalApp(network, intentExtras);
+    }
+
     private void setApplyWindowInsetsListener(final int resourceId, final boolean insetBottom) {
         final View view = findViewById(resourceId);
         view.setOnApplyWindowInsetsListener((v, windowInsets) -> {
@@ -728,8 +754,10 @@ public class CaptivePortalLoginActivity extends Activity {
      *
      *    - menu item 0: "Do not use this network"
      *    - menu item 1: "Use this network as is"
+     *    - menu item 2: "Use old interface"
      */
     private List<Pair<String, PendingIntent>> getCustomTabsMenuItems() {
+        final Resources resources = getResources();
         final ArrayList<Pair<String, PendingIntent>> menuItems = new ArrayList<>();
         final PendingIntent pendingIntent0 = createPendingIntentForMenuItem(
                 ACTION_CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED,
@@ -739,12 +767,19 @@ public class CaptivePortalLoginActivity extends Activity {
                 ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED,
                 USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE
         );
+        final PendingIntent pendingIntent2 = createPendingIntentForMenuItem(
+                ACTION_CUSTOM_TABS_MENU_ITEM_USE_OLD_INTERFACE_CLICKED,
+                USE_OLD_INTERFACE_PENDING_INTENT_REQUEST_CODE
+        );
         menuItems.add(new Pair<>(
-                getResources().getString(R.string.action_do_not_use_network),
+                resources.getString(R.string.action_do_not_use_network),
                 pendingIntent0));
         menuItems.add(new Pair<>(
-                getResources().getString(R.string.action_use_network),
+                resources.getString(R.string.action_use_network),
                 pendingIntent1));
+        menuItems.add(new Pair<>(
+                resources.getString(R.string.action_use_old_interface),
+                pendingIntent2));
         return menuItems;
     }
 
@@ -790,6 +825,7 @@ public class CaptivePortalLoginActivity extends Activity {
         final IntentFilter filter = new IntentFilter();
         filter.addAction(ACTION_CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED);
         filter.addAction(ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED);
+        filter.addAction(ACTION_CUSTOM_TABS_MENU_ITEM_USE_OLD_INTERFACE_CLICKED);
         registerReceiver(receiver,
                 filter,
                 null, /* broadcastPermission */
@@ -823,7 +859,8 @@ public class CaptivePortalLoginActivity extends Activity {
         mVenueFriendlyName = getVenueFriendlyName();
         mUserAgent =
                 getIntent().getStringExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_USER_AGENT);
-        mUrl = getUrl();
+        mUrlString = getIntent().getStringExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL);
+        mUrl = deduceUrlFromIntentString(mUrlString);
         if (mUrl == null) {
             // getUrl() failed to parse the url provided in the intent: bail out in a way that
             // at least provides network access.
@@ -834,9 +871,9 @@ public class CaptivePortalLoginActivity extends Activity {
             Log.d(TAG, String.format("onCreate for %s", mUrl));
         }
 
-        final String spec = getIntent().getStringExtra(EXTRA_CAPTIVE_PORTAL_PROBE_SPEC);
+        mProbeSpecString = getIntent().getStringExtra(EXTRA_CAPTIVE_PORTAL_PROBE_SPEC);
         try {
-            mProbeSpec = CaptivePortalProbeSpec.parseSpecOrNull(spec);
+            mProbeSpec = CaptivePortalProbeSpec.parseSpecOrNull(mProbeSpecString);
         } catch (Exception e) {
             // Make extra sure that invalid configurations do not cause crashes
             mProbeSpec = null;
@@ -865,8 +902,9 @@ public class CaptivePortalLoginActivity extends Activity {
 
         maybeDeleteDirectlyOpenFile();
 
+        final boolean forceWebview = getIntent().getBooleanExtra(EXTRA_USE_OLD_INTERFACE, false);
         final String customTabsProviderPackageName = getCustomTabsProviderPackageIfEnabled();
-        if (customTabsProviderPackageName == null || !SdkLevel.isAtLeastS()) {
+        if (forceWebview || customTabsProviderPackageName == null || !SdkLevel.isAtLeastS()) {
             initializeWebView();
         } else {
             enableEdgeToEdge();
@@ -1173,14 +1211,13 @@ public class CaptivePortalLoginActivity extends Activity {
         maybeStartPendingDownloads();
     }
 
-    private URL getUrl() {
-        String url = getIntent().getStringExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL);
+    private URL deduceUrlFromIntentString(@Nullable final String url) {
         if (url == null) { // TODO: Have a metric to know how often empty url happened.
             // ConnectivityManager#getCaptivePortalServerUrl is deprecated starting with Android R.
             if (Build.VERSION.SDK_INT > Build.VERSION_CODES.Q) {
-                url = DEFAULT_CAPTIVE_PORTAL_HTTP_URL;
+                return makeURL(DEFAULT_CAPTIVE_PORTAL_HTTP_URL);
             } else {
-                url = mCm.getCaptivePortalServerUrl();
+                return makeURL(mCm.getCaptivePortalServerUrl());
             }
         }
         return makeURL(url);
