@@ -158,7 +158,7 @@ public class CaptivePortalLoginActivityTest {
     private static final String TEST_NC_SSID = "Test NetworkCapabilities SSID";
     private static final String TEST_WIFIINFO_SSID = "Test Other SSID";
     private static final String TEST_URL_QUERY = "testquery";
-    private static final long TEST_TIMEOUT_MS = 10_000L;
+    private static final long TEST_TIMEOUT_MS = 30_000L;
     private static final LinkAddress TEST_LINKADDR = new LinkAddress(
             InetAddresses.parseNumericAddress("2001:db8::8"), 64);
     private static final String TEST_USERAGENT = "Test/42.0 Unit-test";
@@ -169,6 +169,8 @@ public class CaptivePortalLoginActivityTest {
     private static final String TEST_PRIVATE_DNS_SERVER = "dns.server";
     private static final String TEST_DOWNLOAD_SERVICE_COMPONENT_CLASS_NAME =
             DownloadService.class.getName();
+    private static final int CUSTOM_TAB_MENU_ITEM_DO_NOT_USE_THIS_NETWORK = 0;
+    private static final int CUSTOM_TAB_MENU_ITEM_USE_THIS_NETWORK = 1;
     private ActivityScenario<InstrumentedCaptivePortalLoginActivity> mActivityScenario;
     private Network mNetwork = new Network(TEST_NETID);
     private TestNetworkTracker mTestNetworkTracker;
@@ -1171,8 +1173,9 @@ public class CaptivePortalLoginActivityTest {
         return linkProperties;
     }
 
-    private void runCaptivePortalUsingCustomTabsTest(boolean isDelegateUidSetSuccessfully,
-            final LinkProperties linkProperties) {
+    private MockCaptivePortal prepareCaptivePortalUsingCustomTabs(
+            boolean isDelegateUidSetSuccessfully, final LinkProperties linkProperties)
+            throws Exception {
         sIsMultiNetworkingSupportedByProvider = true;
         doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
 
@@ -1190,6 +1193,13 @@ public class CaptivePortalLoginActivityTest {
             mActivityScenario.onActivity(a -> cp.mDelegateUidReceiver.onError(
                     new ServiceSpecificException(OsConstants.EBUSY)));
         }
+        return cp;
+    }
+
+    private void runCaptivePortalUsingCustomTabsTest(boolean isDelegateUidSetSuccessfully,
+            final LinkProperties linkProperties) throws Exception {
+        final MockCaptivePortal cp =
+                prepareCaptivePortalUsingCustomTabs(isDelegateUidSetSuccessfully, linkProperties);
 
         final ArgumentCaptor<CustomTabsCallback> captor =
                 ArgumentCaptor.forClass(CustomTabsCallback.class);
@@ -1298,5 +1308,72 @@ public class CaptivePortalLoginActivityTest {
         final LinkProperties linkProperties = new LinkProperties();
         doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
         verifyUsingWebViewRatherThanCustomTabs();
+    }
+
+    private void findMoreButtonAndClickTheMenuItem(final int menuItemIndex) throws Exception {
+        final UiDevice device = UiDevice.getInstance(getInstrumentation());
+        final UiSelector moreButtonSelector =
+                new UiSelector().descriptionContains("Customize and control");
+        final UiObject moreButton = device.findObject(moreButtonSelector);
+        assertTrue("The Custom Tab more button was not found.",
+                moreButton.waitForExists(TEST_TIMEOUT_MS));
+        moreButton.click();
+
+        device.waitForIdle();
+
+        final UiSelector menuItemSelector =
+                new UiSelector().className("android.widget.TextView").instance(menuItemIndex);
+        final UiObject menuItem = device.findObject(menuItemSelector);
+        assertTrue("The expected menu item was not found.",
+                menuItem.waitForExists(TEST_TIMEOUT_MS));
+        menuItem.click();
+
+        device.waitForIdle();
+    }
+
+    private MockCaptivePortal runCustomTabsMenuItemsTest(final int menuItemIndex) throws Exception {
+        // Turn on the screen and dismiss the keyguard, allow UI automation to select the button.
+        ActivityScenario.launch(RequestDismissKeyguardActivity.class);
+
+        final MockCaptivePortal cp = prepareCaptivePortalUsingCustomTabs(
+                true /* isDelegateUidSetSuccessfully */, new LinkProperties());
+        findMoreButtonAndClickTheMenuItem(menuItemIndex);
+        return cp;
+    }
+
+    private static boolean isChromeInstalled() {
+        try {
+            final Context context = getInstrumentation().getContext();
+            context.getPackageManager().getPackageInfo("com.android.chrome", 0);
+            return true;
+        } catch (NameNotFoundException e) {
+            return false;
+        }
+    }
+
+    @Test
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCustomTabsMenuItems_clickDoNotUseThisNetwork() throws Exception {
+        // This test requires to launch a custom tab provider Chrome and depends on the
+        // specific UI of chrome. For those platforms without chrome browser installed
+        // such as aosp platforms, then skip this test.
+        assumeTrue(isChromeInstalled());
+        final MockCaptivePortal cp =
+                runCustomTabsMenuItemsTest(CUSTOM_TAB_MENU_ITEM_DO_NOT_USE_THIS_NETWORK);
+        assertEquals(1, cp.mSetDelegateUidTimes);
+        assertEquals(1, cp.mIgnoreTimes);
+    }
+
+    @Test
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCustomTabsMenuItems_clickUseThisNetwork() throws Exception {
+        // This test requires to launch a custom tab provider Chrome and depends on the
+        // specific UI of chrome. For those platforms without chrome browser installed
+        // such as aosp platforms, then skip this test.
+        assumeTrue(isChromeInstalled());
+        final MockCaptivePortal cp =
+                runCustomTabsMenuItemsTest(CUSTOM_TAB_MENU_ITEM_USE_THIS_NETWORK);
+        assertEquals(1, cp.mSetDelegateUidTimes);
+        assertEquals(1, cp.mUseTimes);
     }
 }

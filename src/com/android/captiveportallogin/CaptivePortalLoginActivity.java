@@ -26,12 +26,15 @@ import static com.android.captiveportallogin.DownloadService.isDirectlyOpenType;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Application;
+import android.app.PendingIntent;
 import android.app.admin.DevicePolicyManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
@@ -56,8 +59,10 @@ import android.net.http.SslCertificate;
 import android.net.http.SslError;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.OutcomeReceiver;
@@ -71,6 +76,7 @@ import android.text.TextUtils;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
+import android.util.Pair;
 import android.util.SparseArray;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
@@ -160,6 +166,16 @@ public class CaptivePortalLoginActivity extends Activity {
         Result(int metricsEvent) { this.metricsEvent = metricsEvent; }
     };
 
+    // Define the pending intent relevant constants for custom tab menu item.
+    private static final String ACTION_CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED =
+            "com.android.captiveportallogin.CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED";
+    private static final String ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED =
+            "com.android.captiveportallogin.CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED";
+    private static final String EXTRA_CUSTOM_TABS_INSTANCE_TOKEN =
+            "com.android.captiveportallogin.CUSTOM_TABS_INSTANCE_TOKEN";
+    private static final int DO_NOT_USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE = 1001;
+    private static final int USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE = 1002;
+
     private URL mUrl;
     private CaptivePortalProbeSpec mProbeSpec;
     private String mUserAgent;
@@ -182,6 +198,8 @@ public class CaptivePortalLoginActivity extends Activity {
     // Must only be touched on the UI thread. This must be initialized to false for thread
     // visibility reasons (if initialized to true, the UI thread may still see false).
     private boolean mIsResumed = false;
+    private CustomTabsMenuItemReceiver mCustomTabsMenuItemReceiver;
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
 
     // Persistence across configuration changes, e.g. when the device is rotated, the
     // window is resized in multi-window mode, or a hardware keyboard is attached.
@@ -191,9 +209,11 @@ public class CaptivePortalLoginActivity extends Activity {
     private static final class PersistentState {
         CaptivePortalCustomTabsServiceConnection mServiceConnection = null;
         CaptivePortalCustomTabsCallback mCallback = null;
+        IBinder mInstanceToken = null;
         public void copyFrom(@NonNull PersistentState other) {
             mServiceConnection = other.mServiceConnection;
             mCallback = other.mCallback;
+            mInstanceToken = other.mInstanceToken;
         }
     }
     // Must only be touched on the UI thread
@@ -223,6 +243,31 @@ public class CaptivePortalLoginActivity extends Activity {
                     // close the app. The activity behind the tab is only resumed in that case.
                     if (mParent.mIsResumed) mParent.done(Result.DISMISSED);
                 });
+            }
+        }
+    }
+
+    /**
+     * The broadcast receiver to receive the pending intent when a custom tabs menu item is clicked.
+     */
+    public final class CustomTabsMenuItemReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final IBinder receivedToken =
+                    intent.getExtras().getBinder(EXTRA_CUSTOM_TABS_INSTANCE_TOKEN);
+            if (mPersistentState.mInstanceToken == null
+                    || !Objects.equals(receivedToken, mPersistentState.mInstanceToken)) {
+                Log.w(TAG, "Ignoring menu tap for a different instance (expected "
+                        + mPersistentState.mInstanceToken + ", got " + receivedToken + ")");
+                return;
+            }
+            final String action = intent.getAction();
+            if (action.equals(ACTION_CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED)) {
+                done(Result.UNWANTED);
+            } else if (action.equals(ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED)) {
+                done(Result.WANTED_AS_IS);
+            } else {
+                Log.e(TAG, "unknown menu action " + action);
             }
         }
     }
@@ -267,11 +312,12 @@ public class CaptivePortalLoginActivity extends Activity {
             final Bitmap emptyIcon = Bitmap.createBitmap(size /* width */, size /* height */,
                     Bitmap.Config.ARGB_8888);
             emptyIcon.setPixel(0, 0, 0);
+
             // The application package name that will resolve to the CustomTabs intent
             // has been set in {@Link CustomTabsIntent.Builder} constructor, unnecessary
             // to call {@Link Intent#setPackage} to explicitly specify the package name
             // again.
-            final CustomTabsIntent customTabsIntent = new CustomTabsIntent.Builder(session)
+            final CustomTabsIntent.Builder builder = new CustomTabsIntent.Builder(session)
                     .setNetwork(mParent.mNetwork)
                     .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
                     // Do not show a title to avoid pages pretend they are part of the Android
@@ -301,9 +347,14 @@ public class CaptivePortalLoginActivity extends Activity {
                     // Remove the close button from tab.
                     // TODO: remove above temporary workaround: setCloseButtonIcon with an empty
                     // close button icon once all custom tabs provider support this API.
-                    .setCloseButtonEnabled(false)
-                    .build();
+                    .setCloseButtonEnabled(false);
 
+            // Add customized custom tabs menu items if any.
+            final List<Pair<String, PendingIntent>> menuItems = mParent.getCustomTabsMenuItems();
+            for (Pair<String, PendingIntent> item : menuItems) {
+                builder.addMenuItem(item.first, item.second);
+            }
+            final CustomTabsIntent customTabsIntent = builder.build();
             // Remove Referrer Header from HTTP probe packet by setting an empty Uri
             // instance in EXTRA_REFERRER, make sure users using custom tabs have the
             // same experience as the custom tabs browser.
@@ -657,6 +708,46 @@ public class CaptivePortalLoginActivity extends Activity {
         return getAnyCustomTabsProviderPackage();
     }
 
+    /**
+     * Create a pendingIntent with the specific custom tab menu item action and instance token,
+     * the instance token is used to filter the out-of-date intents.
+     * see {@link ACTION_CUSTOM_TABS_MENU_ITEM} and {@link EXTRA_CUSTOM_TABS_INSTANCE_TOKEN}.
+     */
+    private PendingIntent createPendingIntentForMenuItem(@NonNull final String action,
+            final int requestCode) {
+        final Intent intent = new Intent(action);
+        final Bundle bundle = new Bundle();
+        bundle.putBinder(EXTRA_CUSTOM_TABS_INSTANCE_TOKEN, mPersistentState.mInstanceToken);
+        intent.putExtras(bundle);
+        return PendingIntent.getBroadcast(getApplicationContext(), requestCode, intent,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    /**
+     * Return the Custom Tabs menu items for captive portal operations.
+     *
+     *    - menu item 0: "Do not use this network"
+     *    - menu item 1: "Use this network as is"
+     */
+    private List<Pair<String, PendingIntent>> getCustomTabsMenuItems() {
+        final ArrayList<Pair<String, PendingIntent>> menuItems = new ArrayList<>();
+        final PendingIntent pendingIntent0 = createPendingIntentForMenuItem(
+                ACTION_CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED,
+                DO_NOT_USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE
+        );
+        final PendingIntent pendingIntent1 = createPendingIntentForMenuItem(
+                ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED,
+                USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE
+        );
+        menuItems.add(new Pair<>(
+                getResources().getString(R.string.action_do_not_use_network),
+                pendingIntent0));
+        menuItems.add(new Pair<>(
+                getResources().getString(R.string.action_use_network),
+                pendingIntent1));
+        return menuItems;
+    }
+
     @Override
     public Object onRetainNonConfigurationInstance() {
         return mPersistentState;
@@ -692,6 +783,18 @@ public class CaptivePortalLoginActivity extends Activity {
         insetsController.setSystemBarsAppearance(
                 systemBarsAreDark ? 0 : WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
                 WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+    }
+
+    private void registerCustomTabsMenuItemBroadcastReceiver(
+            @NonNull final CustomTabsMenuItemReceiver receiver) {
+        final IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED);
+        filter.addAction(ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED);
+        registerReceiver(receiver,
+                filter,
+                null, /* broadcastPermission */
+                mHandler,
+                Context.RECEIVER_EXPORTED);
     }
 
     @Override
@@ -767,7 +870,16 @@ public class CaptivePortalLoginActivity extends Activity {
             initializeWebView();
         } else {
             enableEdgeToEdge();
+
+            if (mCustomTabsMenuItemReceiver == null) {
+                mCustomTabsMenuItemReceiver = new CustomTabsMenuItemReceiver();
+                registerCustomTabsMenuItemBroadcastReceiver(mCustomTabsMenuItemReceiver);
+            }
+
             initializeCustomTabHeader();
+            if (mPersistentState.mInstanceToken == null) {
+                mPersistentState.mInstanceToken = new Binder();
+            }
             if (mPersistentState.mCallback != null) {
                 mPersistentState.mCallback.reparent(this);
             } else {
@@ -995,6 +1107,7 @@ public class CaptivePortalLoginActivity extends Activity {
         if (null != mPersistentState.mServiceConnection && !isChangingConfigurations()) {
             getContextForCustomTabsBinding().unbindService(mPersistentState.mServiceConnection);
             mPersistentState.mServiceConnection = null;
+            mPersistentState.mInstanceToken = null;
         }
 
         final WebView webview = (WebView) findViewById(R.id.webview);
@@ -1010,6 +1123,9 @@ public class CaptivePortalLoginActivity extends Activity {
         if (mNetworkCallback != null) {
             // mNetworkCallback is not null if mUrl is not null.
             mCm.unregisterNetworkCallback(mNetworkCallback);
+        }
+        if (mCustomTabsMenuItemReceiver != null) {
+            unregisterReceiver(mCustomTabsMenuItemReceiver);
         }
         if (mLaunchBrowser) {
             // Give time for this network to become default. After 500ms just proceed.
