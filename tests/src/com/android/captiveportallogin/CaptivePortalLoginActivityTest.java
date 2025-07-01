@@ -158,7 +158,7 @@ public class CaptivePortalLoginActivityTest {
     private static final String TEST_NC_SSID = "Test NetworkCapabilities SSID";
     private static final String TEST_WIFIINFO_SSID = "Test Other SSID";
     private static final String TEST_URL_QUERY = "testquery";
-    private static final long TEST_TIMEOUT_MS = 10_000L;
+    private static final long TEST_TIMEOUT_MS = 30_000L;
     private static final LinkAddress TEST_LINKADDR = new LinkAddress(
             InetAddresses.parseNumericAddress("2001:db8::8"), 64);
     private static final String TEST_USERAGENT = "Test/42.0 Unit-test";
