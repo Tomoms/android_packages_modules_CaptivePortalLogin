@@ -42,6 +42,7 @@ import static androidx.test.espresso.web.webdriver.DriverAtoms.findElement;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.webClick;
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 
+import static com.android.captiveportallogin.CaptivePortalLoginActivity.EXTRA_USE_OLD_INTERFACE;
 import static com.android.captiveportallogin.CaptivePortalLoginFlags.CAPTIVE_PORTAL_CUSTOM_TABS;
 import static com.android.captiveportallogin.DownloadService.DOWNLOAD_ABORTED_REASON_FILE_TOO_LARGE;
 import static com.android.testutils.TestNetworkTrackerKt.initTestNetwork;
@@ -60,6 +61,7 @@ import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -171,6 +173,7 @@ public class CaptivePortalLoginActivityTest {
             DownloadService.class.getName();
     private static final int CUSTOM_TAB_MENU_ITEM_DO_NOT_USE_THIS_NETWORK = 0;
     private static final int CUSTOM_TAB_MENU_ITEM_USE_THIS_NETWORK = 1;
+    private static final int CUSTOM_TAB_MENU_ITEM_USE_OLD_INTERFACE = 2;
     private ActivityScenario<InstrumentedCaptivePortalLoginActivity> mActivityScenario;
     private Network mNetwork = new Network(TEST_NETID);
     private TestNetworkTracker mTestNetworkTracker;
@@ -183,6 +186,8 @@ public class CaptivePortalLoginActivityTest {
     private static CustomTabsClient sMockCustomTabsClient;
     private static ArrayMap<String, Boolean> sFeatureFlags = new ArrayMap<>();
     private static boolean sIsMultiNetworkingSupportedByProvider;
+    private static Bundle sIntentExtrasForceWebview;
+    private static Network sNetworkForceWebview;
     @Rule
     public final SetFeatureFlagsRule mSetFeatureFlagsRule =
             new SetFeatureFlagsRule((name, enabled) -> {
@@ -315,6 +320,14 @@ public class CaptivePortalLoginActivityTest {
         @Override
         boolean getDeviceConfigPropertyBoolean(final String name, boolean defaultValue) {
             return defaultValue;
+        }
+
+        @Override
+        void startActivityFromCustomTabsMenuItem(@NonNull final Network network,
+                @NonNull final Bundle intentExtras) {
+            // Do not start a new captive portal activity.
+            sNetworkForceWebview = network;
+            sIntentExtrasForceWebview = intentExtras;
         }
     }
 
@@ -452,6 +465,10 @@ public class CaptivePortalLoginActivityTest {
     }
 
     private void initActivity(String url) {
+        initActivity(url, false /* useOldInterface */);
+    }
+
+    private void initActivity(String url, boolean useOldInterface) {
         final Context ctx = getInstrumentation().getContext();
         mActivityScenario = ActivityScenario.launch(
                 new Intent(ctx, InstrumentedCaptivePortalLoginActivity.class)
@@ -459,7 +476,8 @@ public class CaptivePortalLoginActivityTest {
                         .putExtra(EXTRA_CAPTIVE_PORTAL_URL, url)
                         .putExtra(EXTRA_NETWORK, mNetwork)
                         .putExtra(EXTRA_CAPTIVE_PORTAL_USER_AGENT, TEST_USERAGENT)
-                        .putExtra(EXTRA_CAPTIVE_PORTAL, new MockCaptivePortal()));
+                        .putExtra(EXTRA_CAPTIVE_PORTAL, new MockCaptivePortal())
+                        .putExtra(EXTRA_USE_OLD_INTERFACE, useOldInterface));
         mActivityScenario.onActivity(activity -> {
             getInstrumentation().getUiAutomation().adoptShellPermissionIdentity(
                     android.Manifest.permission.POST_NOTIFICATIONS);
@@ -1321,6 +1339,10 @@ public class CaptivePortalLoginActivityTest {
 
         device.waitForIdle();
 
+        // Choosing the menu item by index is not a great solution because there is no
+        // guarantee that Chrome will never change the order of the menus. This is only
+        // the index of the menu added by the captive portal login activity and this test
+        // assumes they are all at the top, which is the current chrome behavior.
         final UiSelector menuItemSelector =
                 new UiSelector().className("android.widget.TextView").instance(menuItemIndex);
         final UiObject menuItem = device.findObject(menuItemSelector);
@@ -1375,5 +1397,37 @@ public class CaptivePortalLoginActivityTest {
                 runCustomTabsMenuItemsTest(CUSTOM_TAB_MENU_ITEM_USE_THIS_NETWORK);
         assertEquals(1, cp.mSetDelegateUidTimes);
         assertEquals(1, cp.mUseTimes);
+    }
+
+    private void verifyIntentExtrasForForceWebview() {
+        assertEquals(mNetwork, sIntentExtrasForceWebview.getParcelable(EXTRA_NETWORK));
+        assertEquals(TEST_URL, sIntentExtrasForceWebview.getString(EXTRA_CAPTIVE_PORTAL_URL));
+        assertEquals(TEST_USERAGENT,
+                sIntentExtrasForceWebview.getString(EXTRA_CAPTIVE_PORTAL_USER_AGENT));
+        assertEquals(true, sIntentExtrasForceWebview.getBoolean(EXTRA_USE_OLD_INTERFACE));
+    }
+
+    @Test
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCustomTabsMenuItems_clickUseOldInterface() throws Exception {
+        // This test requires to launch a custom tab provider Chrome and depends on the
+        // specific UI of chrome. For those platforms without chrome browser installed
+        // such as aosp platforms, then skip this test.
+        assumeTrue(isChromeInstalled());
+        runCustomTabsMenuItemsTest(CUSTOM_TAB_MENU_ITEM_USE_OLD_INTERFACE);
+        getInstrumentation().waitForIdleSync();
+        assertEquals(mNetwork, sNetworkForceWebview);
+        verifyIntentExtrasForForceWebview();
+        Intents.release();
+
+        clearInvocations(sConnectivityManager);
+        clearInvocations(sMockCustomTabsClient);
+
+        // Simulate launching a new CaptivePortalLoginActivity with intent including
+        // EXTRA_USE_OLD_INTERFACE, which is set when menu item "Use old interface" is
+        // clicked, and verify the Webview should be initialized instead of CCT.
+        Intents.init();
+        initActivity(TEST_URL, true /* useOldInterface */);
+        verifyWebViewInitialization();
     }
 }
