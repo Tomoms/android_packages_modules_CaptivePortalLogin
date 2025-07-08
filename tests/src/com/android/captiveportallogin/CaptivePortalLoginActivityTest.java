@@ -1374,6 +1374,7 @@ public class CaptivePortalLoginActivityTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
     public void testCustomTabsMenuItems_clickDoNotUseThisNetwork() throws Exception {
         // This test requires to launch a custom tab provider Chrome and depends on the
@@ -1387,6 +1388,7 @@ public class CaptivePortalLoginActivityTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
     public void testCustomTabsMenuItems_clickUseThisNetwork() throws Exception {
         // This test requires to launch a custom tab provider Chrome and depends on the
@@ -1408,6 +1410,7 @@ public class CaptivePortalLoginActivityTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
     public void testCustomTabsMenuItems_clickUseOldInterface() throws Exception {
         // This test requires to launch a custom tab provider Chrome and depends on the
