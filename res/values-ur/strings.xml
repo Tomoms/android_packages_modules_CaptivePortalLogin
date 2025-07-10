@@ -24,6 +24,8 @@
     <string name="ok" msgid="6584612582120777209">"ٹھیک ہے"</string>
     <string name="page_info_address" msgid="1290683284404217554">"پتہ:"</string>
     <string name="page_info" msgid="46593086046896385">"صفحہ کی معلومات"</string>
+    <!-- no translation found for action_use_old_interface (6140392789310499295) -->
+    <skip />
     <string name="downloading_paramfile" msgid="685182551665849043">"‏‎%1$s ڈاؤن لوڈ ہو رہا ہے"</string>
     <string name="download_completed" msgid="5430865338124330584">"ڈاؤن لوڈ مکمل ہو گیا"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"‏%1$s ڈاؤن لوڈ نہیں ہو سکا"</string>
