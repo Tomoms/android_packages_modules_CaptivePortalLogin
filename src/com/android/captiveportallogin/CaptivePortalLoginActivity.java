@@ -147,6 +147,11 @@ public class CaptivePortalLoginActivity extends Activity {
     private static final boolean DBG = true;
     private static final boolean VDBG = false;
 
+    // Copy this value from CaptivePortalData to avoid needing an API bump, which would slow
+    // down this work by many months and have to be maintained forever. See the constant with
+    // the same name in CaptivePortalData.
+    private static final int CAPTIVE_PORTAL_DATA_SOURCE_CAPPORT_WITH_CUSTOM_TABS_OPTIN = 2;
+
     private static final int SOCKET_TIMEOUT_MS = 10000;
     public static final String HTTP_LOCATION_HEADER_NAME = "Location";
     private static final String DEFAULT_CAPTIVE_PORTAL_HTTP_URL =
@@ -838,7 +843,6 @@ public class CaptivePortalLoginActivity extends Activity {
         super.onCreate(savedInstanceState);
         // Initialize the feature flag after CaptivePortalLoginActivity is created, otherwise, the
         // context is still null and throw NPE when fetching the package manager from context.
-        mCaptivePortalCustomTabsEnabled = isFeatureEnabled(CAPTIVE_PORTAL_CUSTOM_TABS);
         mCaptivePortal = getIntent().getParcelableExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL);
         final PersistentState lastState = (PersistentState) getLastNonConfigurationInstance();
         if (null != lastState) {
@@ -856,7 +860,17 @@ public class CaptivePortalLoginActivity extends Activity {
         mWifiManager = getSystemService(WifiManager.class);
         mNetwork = getIntent().getParcelableExtra(ConnectivityManager.EXTRA_NETWORK);
         mNetwork = mNetwork.getPrivateDnsBypassingCopy();
-        mVenueFriendlyName = getVenueFriendlyName();
+        final CaptivePortalData capportData = getCapportData();
+        final boolean optedInToCustomTabs;
+        if (null == capportData) {
+            mVenueFriendlyName = null;
+            optedInToCustomTabs = false;
+        } else {
+            mVenueFriendlyName = getVenueFriendlyName(capportData);
+            optedInToCustomTabs = isOptedInToCustomTabs(capportData);
+        }
+        mCaptivePortalCustomTabsEnabled = isFeatureEnabled(CAPTIVE_PORTAL_CUSTOM_TABS)
+                || optedInToCustomTabs;
         mUserAgent =
                 getIntent().getStringExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_USER_AGENT);
         mUrlString = getIntent().getStringExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL);
@@ -1791,20 +1805,19 @@ public class CaptivePortalLoginActivity extends Activity {
         return SSL_ERROR_MSGS.get(error.getPrimaryError(), R.string.ssl_error_unknown);
     }
 
-    private CharSequence getVenueFriendlyName() {
+    @Nullable
+    private CaptivePortalData getCapportData() {
         final LinkProperties linkProperties = mCm.getLinkProperties(mNetwork);
-        if (linkProperties == null) {
-            return null;
-        }
-        if (linkProperties.getCaptivePortalData() == null) {
-            return null;
-        }
-        final CaptivePortalData captivePortalData = linkProperties.getCaptivePortalData();
+        if (linkProperties == null) return null;
+        return linkProperties.getCaptivePortalData();
+    }
 
-        if (captivePortalData == null) {
-            return null;
-        }
+    private boolean isOptedInToCustomTabs(@NonNull final CaptivePortalData captivePortalData) {
+        return captivePortalData.getUserPortalUrlSource()
+                == CAPTIVE_PORTAL_DATA_SOURCE_CAPPORT_WITH_CUSTOM_TABS_OPTIN;
+    }
 
+    private CharSequence getVenueFriendlyName(@NonNull final CaptivePortalData captivePortalData) {
         // TODO: Use CaptivePortalData#getVenueFriendlyName when building with S
         // Use reflection for now
         final Class captivePortalDataClass = captivePortalData.getClass();
