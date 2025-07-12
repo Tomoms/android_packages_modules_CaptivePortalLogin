@@ -24,6 +24,7 @@
     <string name="ok" msgid="6584612582120777209">"确定"</string>
     <string name="page_info_address" msgid="1290683284404217554">"地址："</string>
     <string name="page_info" msgid="46593086046896385">"页面信息"</string>
+    <string name="action_use_old_interface" msgid="6140392789310499295">"使用旧版界面"</string>
     <string name="downloading_paramfile" msgid="685182551665849043">"正在下载%1$s"</string>
     <string name="download_completed" msgid="5430865338124330584">"下载已完成"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"无法下载%1$s"</string>
