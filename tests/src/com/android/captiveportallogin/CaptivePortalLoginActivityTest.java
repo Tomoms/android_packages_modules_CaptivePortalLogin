@@ -45,6 +45,13 @@ import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentat
 import static com.android.captiveportallogin.CaptivePortalLoginActivity.EXTRA_USE_OLD_INTERFACE;
 import static com.android.captiveportallogin.CaptivePortalLoginFlags.CAPTIVE_PORTAL_CUSTOM_TABS;
 import static com.android.captiveportallogin.DownloadService.DOWNLOAD_ABORTED_REASON_FILE_TOO_LARGE;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_FEATURE_NOT_ENABLED;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_PRIVATE_DNS_ENABLED_V_AND_BELOW;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_UNKNOWN;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE;
 import static com.android.testutils.TestNetworkTrackerKt.initTestNetwork;
 import static com.android.testutils.TestPermissionUtil.runAsShell;
 
@@ -174,6 +181,7 @@ public class CaptivePortalLoginActivityTest {
     private static final int CUSTOM_TAB_MENU_ITEM_DO_NOT_USE_THIS_NETWORK = 0;
     private static final int CUSTOM_TAB_MENU_ITEM_USE_THIS_NETWORK = 1;
     private static final int CUSTOM_TAB_MENU_ITEM_USE_OLD_INTERFACE = 2;
+
     private ActivityScenario<InstrumentedCaptivePortalLoginActivity> mActivityScenario;
     private Network mNetwork = new Network(TEST_NETID);
     private TestNetworkTracker mTestNetworkTracker;
@@ -184,6 +192,7 @@ public class CaptivePortalLoginActivityTest {
     private static DevicePolicyManager sMockDevicePolicyManager;
     private static DownloadService.DownloadServiceBinder sDownloadServiceBinder;
     private static CustomTabsClient sMockCustomTabsClient;
+    private static CaptivePortalLoginMetrics sMockCaptivePortalLoginMetrics;
     private static ArrayMap<String, Boolean> sFeatureFlags = new ArrayMap<>();
     private static boolean sIsMultiNetworkingSupportedByProvider;
     private static Bundle sIntentExtrasForceWebview;
@@ -293,6 +302,11 @@ public class CaptivePortalLoginActivityTest {
         String getFileProviderAuthority() {
             // Matches the test provider in the test app manifest
             return "com.android.captiveportallogin.tests.fileprovider";
+        }
+
+        @Override
+        CaptivePortalLoginMetrics getCaptivePortalLoginMetrics() {
+            return sMockCaptivePortalLoginMetrics;
         }
 
         @Override
@@ -410,6 +424,7 @@ public class CaptivePortalLoginActivityTest {
         sMockDevicePolicyManager = mock(DevicePolicyManager.class);
         sDownloadServiceBinder = mock(DownloadService.DownloadServiceBinder.class);
         sMockCustomTabsClient = mock(CustomTabsClient.class);
+        sMockCaptivePortalLoginMetrics = mock(CaptivePortalLoginMetrics.class);
 
         MockitoAnnotations.initMocks(this);
         // Use a real (but test) network for the application. The application will pass this
@@ -1235,8 +1250,10 @@ public class CaptivePortalLoginActivityTest {
         assertEquals(1, cp.mSetDelegateUidTimes);
     }
 
+    // only run this test on B and above when the private DNS is on, otherwise, Webview will
+    // be launched rather than CCT.
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
     public void testCaptivePortalUsingCustomTabs_privateDnsOn_bypassVpnOrPrivateDnsSuccess()
             throws Exception {
@@ -1244,8 +1261,10 @@ public class CaptivePortalLoginActivityTest {
         runCaptivePortalUsingCustomTabsTest(true /* isDelegateUidSetSuccessfully */, lp);
     }
 
+    // only run this test on B and above when the private DNS is on, otherwise, Webview will
+    // be launched rather than CCT.
     @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @IgnoreUpTo(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
     public void testCaptivePortalUsingCustomTabs_privateDnsOn_bypassVpnOrPrivateDnsFailure()
             throws Exception {
@@ -1269,24 +1288,6 @@ public class CaptivePortalLoginActivityTest {
             throws Exception {
         final LinkProperties lp = new LinkProperties();
         runCaptivePortalUsingCustomTabsTest(false /* isDelegateUidSetSuccessfully */, lp);
-    }
-
-    @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
-    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
-    public void testCaptivePortalUsingCustomTabs_nullLinkProperties_bypassVpnOrPrivateDnsSuccess()
-            throws Exception {
-        runCaptivePortalUsingCustomTabsTest(true /* isDelegateUidSetSuccessfully */,
-                null /* LinkProperties */);
-    }
-
-    @Test
-    @IgnoreUpTo(Build.VERSION_CODES.R)
-    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
-    public void testCaptivePortalUsingCustomTabs_nullLinkProperties_bypassVpnOrPrivateDnsFailure()
-            throws Exception {
-        runCaptivePortalUsingCustomTabsTest(false /* isDelegateUidSetSuccessfully */,
-                null /* LinkProperties */);
     }
 
     private void verifyWebViewInitialization() {
@@ -1325,6 +1326,14 @@ public class CaptivePortalLoginActivityTest {
         sIsMultiNetworkingSupportedByProvider = false;
         final LinkProperties linkProperties = new LinkProperties();
         doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
+        verifyUsingWebViewRatherThanCustomTabs();
+    }
+
+    @Test
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalUsingCustomTabs_nullLinkProperties() throws Exception {
+        sIsMultiNetworkingSupportedByProvider = true;
+        doReturn(null).when(sConnectivityManager).getLinkProperties(mNetwork);
         verifyUsingWebViewRatherThanCustomTabs();
     }
 
@@ -1433,5 +1442,117 @@ public class CaptivePortalLoginActivityTest {
         Intents.init();
         initActivity(TEST_URL, true /* useOldInterface */);
         verifyWebViewInitialization();
+    }
+
+    private void verifyCaptivePortalLoginMetrics(final boolean expectWebview, final int result,
+            final int reason) {
+        // UID isn't set in Webview case.
+        if (!expectWebview) {
+            verify(sMockCaptivePortalLoginMetrics).setUid(eq(TEST_CUSTOM_TABS_PROVIDER_UID));
+        } else {
+            verify(sMockCaptivePortalLoginMetrics, never()).setUid(anyInt());
+        }
+        verify(sMockCaptivePortalLoginMetrics).setPortalResult(eq(result));
+        if (reason != CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_UNKNOWN) {
+            verify(sMockCaptivePortalLoginMetrics).setReason(eq(reason));
+        }
+    }
+
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = false)
+    public void testCaptivePortalMetrics_useWebview_dismissed() throws Exception {
+        initActivity(TEST_URL);
+        // Initialize intent capturing after launching the activity to avoid capturing extra
+        // intents.
+        Intents.init();
+
+        // NetworkCapabilities updates w/ NET_CAPABILITY_VALIDATED.
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        nc.setCapability(NET_CAPABILITY_VALIDATED, true);
+        notifyValidatedChangedAndDismissed(nc);
+        verifyCaptivePortalLoginMetrics(true /* expectWebview */,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_FEATURE_NOT_ENABLED);
+    }
+
+    @Test
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalMetrics_useCustomTabs_dismissed() throws Exception {
+        final LinkProperties lp = new LinkProperties();
+        runCaptivePortalUsingCustomTabsTest(true /* isDelegateUidSetSuccessfully */, lp);
+
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        nc.setCapability(NET_CAPABILITY_VALIDATED, true);
+        notifyValidatedChangedAndDismissed(nc);
+        verifyCaptivePortalLoginMetrics(false /* expectWebview */,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_UNKNOWN);
+    }
+
+    @Test
+    @IgnoreAfter(Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalMetrics_fallbackToWebview_R() throws Exception {
+        sIsMultiNetworkingSupportedByProvider = true;
+        verifyUsingWebViewRatherThanCustomTabs();
+
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        nc.setCapability(NET_CAPABILITY_VALIDATED, true);
+        notifyValidatedChangedAndDismissed(nc);
+        verifyCaptivePortalLoginMetrics(true /* expectWebview */,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R);
+    }
+
+    @Test
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalMetrics_fallbackToWebview_notSupportMultiNetwork()
+            throws Exception {
+        sIsMultiNetworkingSupportedByProvider = false;
+        final LinkProperties linkProperties = new LinkProperties();
+        doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
+        verifyUsingWebViewRatherThanCustomTabs();
+
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        nc.setCapability(NET_CAPABILITY_VALIDATED, true);
+        notifyValidatedChangedAndDismissed(nc);
+        verifyCaptivePortalLoginMetrics(true /* expectWebview */,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK);
+    }
+
+    @Test
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalMetrics_fallbackToWebview_useOldInterface()
+            throws Exception {
+        initActivity(TEST_URL, true /* useOldInterface */);
+        Intents.init();
+        verifyWebViewInitialization();
+
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        nc.setCapability(NET_CAPABILITY_VALIDATED, true);
+        notifyValidatedChangedAndDismissed(nc);
+        verifyCaptivePortalLoginMetrics(true /* expectWebview */,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE);
+    }
+
+    // only run this test on V and below when the private DNS is on, otherwise, metrics won't be
+    // logged.
+    @Test
+    @IgnoreAfter(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalMetrics_fallbackToWebview_privateDnsOnVAndBelow()
+            throws Exception {
+        sIsMultiNetworkingSupportedByProvider = true;
+        final LinkProperties linkProperties = makeLinkPropertiesWithPrivateDns();
+        doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
+        verifyUsingWebViewRatherThanCustomTabs();
+
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        nc.setCapability(NET_CAPABILITY_VALIDATED, true);
+        notifyValidatedChangedAndDismissed(nc);
+        verifyCaptivePortalLoginMetrics(true /* expectWebview */,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS,
+                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_PRIVATE_DNS_ENABLED_V_AND_BELOW);
     }
 }

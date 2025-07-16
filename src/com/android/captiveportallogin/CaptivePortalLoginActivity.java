@@ -22,6 +22,15 @@ import static android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED;
 import static com.android.captiveportallogin.CaptivePortalLoginFlags.CAPTIVE_PORTAL_CUSTOM_TABS;
 import static com.android.captiveportallogin.CaptivePortalLoginFlags.USE_ANY_CUSTOM_TAB_PROVIDER;
 import static com.android.captiveportallogin.DownloadService.isDirectlyOpenType;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_FEATURE_NOT_ENABLED;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_CCT;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_PRIVATE_DNS_ENABLED_V_AND_BELOW;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_UNWANTED;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_WANTED_AS_IS;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -232,6 +241,9 @@ public class CaptivePortalLoginActivity extends Activity {
     }
     // Must only be touched on the UI thread
     private final PersistentState mPersistentState = new PersistentState();
+
+    private final CaptivePortalLoginMetrics mCaptivePortalLoginMetrics =
+            getCaptivePortalLoginMetrics();
 
     private static final class CaptivePortalCustomTabsCallback extends CustomTabsCallback {
         @NonNull private CaptivePortalLoginActivity mParent;
@@ -592,6 +604,11 @@ public class CaptivePortalLoginActivity extends Activity {
     }
 
     @VisibleForTesting
+    CaptivePortalLoginMetrics getCaptivePortalLoginMetrics() {
+        return new CaptivePortalLoginMetrics();
+    }
+
+    @VisibleForTesting
     @Nullable
     String getDefaultCustomTabsProviderPackage() {
         return CustomTabsClient.getPackageName(getApplicationContext(), null /* packages */);
@@ -721,11 +738,32 @@ public class CaptivePortalLoginActivity extends Activity {
 
     @Nullable
     private String getCustomTabsProviderPackageIfEnabled() {
-        if (!mCaptivePortalCustomTabsEnabled) return null;
+        if (!mCaptivePortalCustomTabsEnabled) {
+            mCaptivePortalLoginMetrics.setReason(
+                    CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_FEATURE_NOT_ENABLED);
+            return null;
+        }
+
+        final LinkProperties lp = mCm.getLinkProperties(mNetwork);
+        if (lp == null) return null;
+        if (lp.getPrivateDnsServerName() != null && !SdkLevel.isAtLeastB()) {
+            Log.i(TAG, "Do not use custom tabs if private DNS (strict mode) is enabled under B");
+            mCaptivePortalLoginMetrics.setReason(
+                    CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_PRIVATE_DNS_ENABLED_V_AND_BELOW);
+            return null;
+        }
 
         final String defaultPackage = getDefaultCustomTabsProviderPackage();
         if (null != defaultPackage && isMultiNetworkingSupportedByProvider(defaultPackage)) {
             return defaultPackage;
+        }
+        if (null == defaultPackage) {
+            mCaptivePortalLoginMetrics.setReason(
+                    CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_CCT);
+        }
+        if (!isMultiNetworkingSupportedByProvider(defaultPackage)) {
+            mCaptivePortalLoginMetrics.setReason(
+                    CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK);
         }
 
         Log.i(TAG, "Default browser doesn't support custom tabs");
@@ -841,6 +879,7 @@ public class CaptivePortalLoginActivity extends Activity {
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        mCaptivePortalLoginMetrics.reset();
         // Initialize the feature flag after CaptivePortalLoginActivity is created, otherwise, the
         // context is still null and throw NPE when fetching the package manager from context.
         mCaptivePortal = getIntent().getParcelableExtra(ConnectivityManager.EXTRA_CAPTIVE_PORTAL);
@@ -919,6 +958,14 @@ public class CaptivePortalLoginActivity extends Activity {
         final boolean forceWebview = getIntent().getBooleanExtra(EXTRA_USE_OLD_INTERFACE, false);
         final String customTabsProviderPackageName = getCustomTabsProviderPackageIfEnabled();
         if (forceWebview || customTabsProviderPackageName == null || !SdkLevel.isAtLeastS()) {
+            if (!SdkLevel.isAtLeastS()) {
+                mCaptivePortalLoginMetrics.setReason(
+                        CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R);
+            }
+            if (forceWebview) {
+                mCaptivePortalLoginMetrics.setReason(
+                        CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE);
+            }
             initializeWebView();
         } else {
             enableEdgeToEdge();
@@ -977,6 +1024,11 @@ public class CaptivePortalLoginActivity extends Activity {
                         });
                 if (!success) { // caught an exception
                     serviceConnected.complete(false);
+                }
+                try {
+                    mCaptivePortalLoginMetrics.setUid(getPackageUid(customTabsProviderPackageName));
+                } catch (NameNotFoundException e) {
+                    // do nothing
                 }
             }
         }
@@ -1058,14 +1110,21 @@ public class CaptivePortalLoginActivity extends Activity {
         switch (result) {
             case DISMISSED:
                 mCaptivePortal.reportCaptivePortalDismissed();
+                mCaptivePortalLoginMetrics.setPortalResult(
+                        CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS);
                 break;
             case UNWANTED:
                 mCaptivePortal.ignoreNetwork();
+                mCaptivePortalLoginMetrics.setPortalResult(
+                        CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_UNWANTED);
                 break;
             case WANTED_AS_IS:
                 mCaptivePortal.useNetwork();
+                mCaptivePortalLoginMetrics.setPortalResult(
+                        CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_WANTED_AS_IS);
                 break;
         }
+        mCaptivePortalLoginMetrics.statsWrite();
         finishAndRemoveTask();
     }
 
