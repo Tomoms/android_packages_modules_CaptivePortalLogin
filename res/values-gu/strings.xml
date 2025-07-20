@@ -24,8 +24,7 @@
     <string name="ok" msgid="6584612582120777209">"ઓકે"</string>
     <string name="page_info_address" msgid="1290683284404217554">"સરનામું:"</string>
     <string name="page_info" msgid="46593086046896385">"પેજ વિશે માહિતી"</string>
-    <!-- no translation found for action_use_old_interface (6140392789310499295) -->
-    <skip />
+    <string name="action_use_old_interface" msgid="6140392789310499295">"જૂના ઇન્ટરફેસનો ઉપયોગ કરો"</string>
     <string name="downloading_paramfile" msgid="685182551665849043">"%1$sને ડાઉનલોડ કરી રહ્યાં છીએ"</string>
     <string name="download_completed" msgid="5430865338124330584">"ડાઉનલોડ પૂર્ણ થયું"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"%1$sને ડાઉનલોડ કરી શક્યાં નહી"</string>

@@ -24,8 +24,7 @@
     <string name="ok" msgid="6584612582120777209">"Aceptar"</string>
     <string name="page_info_address" msgid="1290683284404217554">"Dirección:"</string>
     <string name="page_info" msgid="46593086046896385">"Información de la página"</string>
-    <!-- no translation found for action_use_old_interface (6140392789310499295) -->
-    <skip />
+    <string name="action_use_old_interface" msgid="6140392789310499295">"Usar interfaz antigua"</string>
     <string name="downloading_paramfile" msgid="685182551665849043">"Descargando %1$s"</string>
     <string name="download_completed" msgid="5430865338124330584">"Descarga completada"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"No se ha podido descargar %1$s"</string>
