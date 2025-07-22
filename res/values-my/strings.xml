@@ -24,8 +24,7 @@
     <string name="ok" msgid="6584612582120777209">"OK"</string>
     <string name="page_info_address" msgid="1290683284404217554">"လိပ်စာ-"</string>
     <string name="page_info" msgid="46593086046896385">"စာမျက်နှာ အချက်အလက်"</string>
-    <!-- no translation found for action_use_old_interface (6140392789310499295) -->
-    <skip />
+    <string name="action_use_old_interface" msgid="6140392789310499295">"အင်တာဖေ့စ်အဟောင်းကို သုံးရန်"</string>
     <string name="downloading_paramfile" msgid="685182551665849043">"%1$s ဒေါင်းလုဒ်လုပ်နေသည်"</string>
     <string name="download_completed" msgid="5430865338124330584">"ဒေါင်းလုဒ်လုပ်ပြီးပြီ"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"%1$s ဒေါင်းလုဒ်လုပ်၍မရပါ"</string>
