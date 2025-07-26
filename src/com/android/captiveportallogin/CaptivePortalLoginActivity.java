@@ -955,6 +955,11 @@ public class CaptivePortalLoginActivity extends Activity {
             public void onCapabilitiesChanged(Network network, NetworkCapabilities nc) {
                 handleCapabilitiesChanged(network, nc);
             }
+
+            @Override
+            public void onLinkPropertiesChanged(Network network, LinkProperties lp) {
+                handleLinkPropertiesChanged(network, lp);
+            }
         };
         mCm.registerNetworkCallback(new NetworkRequest.Builder().build(), mNetworkCallback,
                 mHandler);
@@ -1110,6 +1115,28 @@ public class CaptivePortalLoginActivity extends Activity {
             // validated.
             done(Result.DISMISSED);
         }
+    }
+
+    @VisibleForTesting
+    void handleLinkPropertiesChanged(@NonNull final Network network,
+            @NonNull final LinkProperties lp) {
+        if (!mNetwork.equals(network)) return;
+
+        // The custom tab isn't initialized. The app is using WebView.
+        if (!mUsingCustomTabs) return;
+
+        // The private DNS bypass isn't supported on Android V and below for Custom tabs,
+        // the activity should be dismissed if a user enables private DNS in settings while
+        // a custom tab is active. The WebView will then be launched when the activity is
+        // recreated.
+        if (SdkLevel.isAtLeastB()) return;
+
+        // Private DNS was not enabled when the app launched, otherwise, mUsingCustomTabs
+        // would be false.
+        if (lp.getPrivateDnsServerName() == null) return;
+
+        // TODO: log this event metrics.
+        done(Result.DISMISSED);
     }
 
     // Find WebView's proxy BroadcastReceiver and prompt it to read proxy system properties.

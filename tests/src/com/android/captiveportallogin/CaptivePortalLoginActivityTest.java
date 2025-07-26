@@ -646,6 +646,11 @@ public class CaptivePortalLoginActivityTest {
         getInstrumentation().waitForIdleSync();
     }
 
+    private void notifyLinkPropertiesChanged(final LinkProperties lp) {
+        mActivityScenario.onActivity(a -> a.handleLinkPropertiesChanged(mNetwork, lp));
+        getInstrumentation().waitForIdleSync();
+    }
+
     private void notifyValidatedChangedAndDismissed(final NetworkCapabilities nc) {
         // Get the MockCaptivePortal before the activity destroys itself
         final MockCaptivePortal cp = getCaptivePortal();
@@ -1309,6 +1314,30 @@ public class CaptivePortalLoginActivityTest {
             throws Exception {
         final LinkProperties lp = new LinkProperties();
         runCaptivePortalUsingCustomTabsTest(false /* isDelegateUidSetSuccessfully */, lp);
+    }
+
+    // Only run this test on R+ and B-, because on B and above private DNS bypass is supported,
+    // on R and below, OutcomeReceiver class is not available yet which is required for Custom
+    // tab implementation.
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @IgnoreAfter(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalUsingCustomTabs_privateDnsOnWhileCustomTabActive()
+            throws Exception {
+        final LinkProperties lp = new LinkProperties();
+        runCaptivePortalUsingCustomTabsTest(true /* isDelegateUidSetSuccessfully */, lp);
+
+        // Simulate to enable the private DNS while the custom tab is active.
+        lp.setUsePrivateDns(true);
+        lp.setPrivateDnsServerName("strict.example.com");
+        notifyLinkPropertiesChanged(lp);
+
+        // Verify the done(Result.DISMISSED) will be called.
+        final MockCaptivePortal cp = getCaptivePortal();
+        assertEquals(cp.mDismissTimes, 1);
+        assertEquals(cp.mIgnoreTimes, 0);
+        assertEquals(cp.mUseTimes, 0);
     }
 
     private void verifyWebViewInitialization() {
