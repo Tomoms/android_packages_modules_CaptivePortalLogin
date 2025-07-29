@@ -1475,6 +1475,7 @@ public class CaptivePortalLoginActivityTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
     public void testCaptivePortalMetrics_useCustomTabs_dismissed() throws Exception {
         final LinkProperties lp = new LinkProperties();
