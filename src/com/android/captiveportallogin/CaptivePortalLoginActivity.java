@@ -273,6 +273,18 @@ public class CaptivePortalLoginActivity extends Activity {
         }
     }
 
+    private void relaunchActivityWithWebview() {
+        finishAndRemoveTask();
+        final Bundle extras = new Bundle();
+        extras.putParcelable(ConnectivityManager.EXTRA_NETWORK, mNetwork);
+        extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL, mUrlString);
+        extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_PROBE_SPEC,
+                mProbeSpecString);
+        extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_USER_AGENT, mUserAgent);
+        extras.putBoolean(EXTRA_USE_OLD_INTERFACE, true);
+        startActivityFromCustomTabsMenuItem(mNetwork, extras);
+    }
+
     /**
      * The broadcast receiver to receive the pending intent when a custom tabs menu item is clicked.
      */
@@ -293,16 +305,7 @@ public class CaptivePortalLoginActivity extends Activity {
             } else if (action.equals(ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED)) {
                 done(Result.WANTED_AS_IS);
             } else if (action.equals(ACTION_CUSTOM_TABS_MENU_ITEM_USE_OLD_INTERFACE_CLICKED)) {
-                finishAndRemoveTask();
-
-                final Bundle extras = new Bundle();
-                extras.putParcelable(ConnectivityManager.EXTRA_NETWORK, mNetwork);
-                extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL, mUrlString);
-                extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_PROBE_SPEC,
-                        mProbeSpecString);
-                extras.putString(ConnectivityManager.EXTRA_CAPTIVE_PORTAL_USER_AGENT, mUserAgent);
-                extras.putBoolean(EXTRA_USE_OLD_INTERFACE, true);
-                startActivityFromCustomTabsMenuItem(mNetwork, extras);
+                relaunchActivityWithWebview();
             } else {
                 Log.e(TAG, "unknown menu action " + action);
             }
