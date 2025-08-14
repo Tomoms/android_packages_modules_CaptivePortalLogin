@@ -148,6 +148,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -711,9 +712,10 @@ public class CaptivePortalLoginActivity extends Activity {
         });
     }
 
-    private void bindCustomTabsService(@NonNull final String customTabsProviderPackageName) {
+    private void bindCustomTabsService(@NonNull final String customTabsProviderPackageName,
+            @NonNull final CaptivePortalCustomTabsServiceConnection connection) {
         CustomTabsClient.bindCustomTabsService(getContextForCustomTabsBinding(),
-                customTabsProviderPackageName, mPersistentState.mServiceConnection);
+                customTabsProviderPackageName, connection);
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
@@ -988,19 +990,30 @@ public class CaptivePortalLoginActivity extends Activity {
                 mPersistentState.mCallback = new CaptivePortalCustomTabsCallback(this);
             }
 
-            final CompletableFuture<Boolean> serviceConnected = new CompletableFuture<>();
+            final CompletableFuture<CaptivePortalCustomTabsServiceConnection> serviceConnected =
+                    new CompletableFuture<>();
             final CompletableFuture<Boolean> layoutDone = new CompletableFuture<>();
             CompletableFuture.allOf(serviceConnected, layoutDone)
-                    .thenRun(() -> bindCustomTabsService(customTabsProviderPackageName));
+                    .thenRun(() -> {
+                        final CaptivePortalCustomTabsServiceConnection connection;
+                        try {
+                            connection = serviceConnected.get();
+                        } catch (InterruptedException | ExecutionException e) {
+                            Log.e(TAG, "Service connection future completes with error", e);
+                            return;
+                        }
+                        bindCustomTabsService(customTabsProviderPackageName, connection);
+                        mPersistentState.mServiceConnection = connection;
+                    });
 
             final View remainingSpaceView = findViewById(R.id.custom_tab_header_remaining_space);
             remainingSpaceView.getViewTreeObserver().addOnGlobalLayoutListener(
                     () -> layoutDone.complete(true));
             if (mPersistentState.mServiceConnection != null) {
                 mPersistentState.mServiceConnection.reparent(this);
-                serviceConnected.complete(true);
+                serviceConnected.complete(mPersistentState.mServiceConnection);
             } else {
-                mPersistentState.mServiceConnection =
+                final CaptivePortalCustomTabsServiceConnection connection =
                         new CaptivePortalCustomTabsServiceConnection(this);
                 // TODO: Fall back to WebView if the custom tabs provider is not allowed to
                 // bypass VPN or private DNS, e.g. an error or exception happens when calling
@@ -1014,7 +1027,7 @@ public class CaptivePortalLoginActivity extends Activity {
                                 Log.d(TAG, "Set delegate uid for "
                                         + customTabsProviderPackageName
                                         + " to bypass VPN successfully");
-                                serviceConnected.complete(true);
+                                serviceConnected.complete(connection);
                             }
 
                             @Override
@@ -1022,11 +1035,11 @@ public class CaptivePortalLoginActivity extends Activity {
                                 Log.e(TAG, "Fail to set delegate uid for "
                                         + customTabsProviderPackageName + " to bypass VPN"
                                         + ", error: " + OsConstants.errnoName(e.errorCode), e);
-                                serviceConnected.complete(false);
+                                serviceConnected.complete(connection);
                             }
                         });
                 if (!success) { // caught an exception
-                    serviceConnected.complete(false);
+                    serviceConnected.complete(connection);
                 }
                 try {
                     mCaptivePortalLoginMetrics.setUid(getPackageUid(customTabsProviderPackageName));
@@ -1218,9 +1231,11 @@ public class CaptivePortalLoginActivity extends Activity {
         // When changing configurations, the activity will be restarted immediately by the
         // system. It will retain persistent state with onRetainNonConfigurationInstance,
         // and therefore the connection must not be severed just yet.
-        if (null != mPersistentState.mServiceConnection && !isChangingConfigurations()) {
-            getContextForCustomTabsBinding().unbindService(mPersistentState.mServiceConnection);
-            mPersistentState.mServiceConnection = null;
+        if (!isChangingConfigurations()) {
+            if (null != mPersistentState.mServiceConnection) {
+                getContextForCustomTabsBinding().unbindService(mPersistentState.mServiceConnection);
+                mPersistentState.mServiceConnection = null;
+            }
             mPersistentState.mInstanceToken = null;
         }
 
