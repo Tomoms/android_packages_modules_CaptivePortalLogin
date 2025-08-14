@@ -24,6 +24,7 @@ import static android.net.ConnectivityManager.EXTRA_CAPTIVE_PORTAL;
 import static android.net.ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL;
 import static android.net.ConnectivityManager.EXTRA_CAPTIVE_PORTAL_USER_AGENT;
 import static android.net.ConnectivityManager.EXTRA_NETWORK;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED;
 import static android.view.accessibility.AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED;
 
@@ -479,20 +480,25 @@ public class CaptivePortalLoginActivityTest {
         sFeatureFlags.clear();
     }
 
+    private Intent makeIntent(Context context, String url, boolean useOldInterface,
+            Parcelable captivePortal) {
+        return new Intent(context, InstrumentedCaptivePortalLoginActivity.class)
+                .setAction(ACTION_CAPTIVE_PORTAL_SIGN_IN)
+                .putExtra(EXTRA_CAPTIVE_PORTAL_URL, url)
+                .putExtra(EXTRA_NETWORK, mNetwork)
+                .putExtra(EXTRA_CAPTIVE_PORTAL_USER_AGENT, TEST_USERAGENT)
+                .putExtra(EXTRA_CAPTIVE_PORTAL, captivePortal)
+                .putExtra(EXTRA_USE_OLD_INTERFACE, useOldInterface);
+    }
+
     private void initActivity(String url) {
         initActivity(url, false /* useOldInterface */);
     }
 
     private void initActivity(String url, boolean useOldInterface) {
         final Context ctx = getInstrumentation().getContext();
-        mActivityScenario = ActivityScenario.launch(
-                new Intent(ctx, InstrumentedCaptivePortalLoginActivity.class)
-                        .setAction(ACTION_CAPTIVE_PORTAL_SIGN_IN)
-                        .putExtra(EXTRA_CAPTIVE_PORTAL_URL, url)
-                        .putExtra(EXTRA_NETWORK, mNetwork)
-                        .putExtra(EXTRA_CAPTIVE_PORTAL_USER_AGENT, TEST_USERAGENT)
-                        .putExtra(EXTRA_CAPTIVE_PORTAL, new MockCaptivePortal())
-                        .putExtra(EXTRA_USE_OLD_INTERFACE, useOldInterface));
+        final Intent intent = makeIntent(ctx, url, useOldInterface, new MockCaptivePortal());
+        mActivityScenario = ActivityScenario.launch(intent);
         mActivityScenario.onActivity(activity -> {
             getInstrumentation().getUiAutomation().adoptShellPermissionIdentity(
                     android.Manifest.permission.POST_NOTIFICATIONS);
@@ -506,12 +512,8 @@ public class CaptivePortalLoginActivityTest {
     @Test
     public void testonCreateWithNullCaptivePortal() throws Exception {
         final Context ctx = getInstrumentation().getContext();
-        final Intent intent = new Intent(ctx, InstrumentedCaptivePortalLoginActivity.class)
-                .setAction(ACTION_CAPTIVE_PORTAL_SIGN_IN)
-                .putExtra(EXTRA_CAPTIVE_PORTAL_URL, TEST_URL)
-                .putExtra(EXTRA_NETWORK, mNetwork)
-                .putExtra(EXTRA_CAPTIVE_PORTAL_USER_AGENT, TEST_USERAGENT)
-                .putExtra(EXTRA_CAPTIVE_PORTAL, (Bundle) null);
+        final Intent intent = makeIntent(ctx, TEST_URL, false /* useOldInterface */,
+                (Bundle) null /* CaptivePortal */);
         try (ActivityScenario<InstrumentedCaptivePortalLoginActivity> scenario =
                      ActivityScenario.launch(intent)) {
             getInstrumentation().waitForIdleSync();
@@ -1219,6 +1221,14 @@ public class CaptivePortalLoginActivityTest {
         intending(hasPackage(TEST_CUSTOM_TABS_PACKAGE_NAME))
                 .respondWith(new ActivityResult(RESULT_OK, null));
         initActivity(TEST_URL);
+
+        // Simulate the capabilities update callback with NET_CAPABILITY_CAPTIVE_PORTAL as
+        // soon as the captive portal is detected. This ensures 'mIsPortal' is initialized
+        // before the 'onNavigationEvent' callback is triggered.
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        nc.setCapability(NET_CAPABILITY_CAPTIVE_PORTAL, true);
+        notifyValidatedChangedNotDone(nc);
+
         final MockCaptivePortal cp = getCaptivePortal();
         if (isDelegateUidSetSuccessfully) {
             mActivityScenario.onActivity(a -> cp.mDelegateUidReceiver.onResult(null));
@@ -1245,6 +1255,17 @@ public class CaptivePortalLoginActivityTest {
                 hasData(Uri.parse(TEST_URL))));
 
         // Send navigation start event, verify if the network will be reevaluated.
+        callback.onNavigationEvent(NAVIGATION_STARTED, null /* extras */);
+        assertEquals(1, cp.mReevaluateTimes);
+        assertEquals(1, cp.mSetDelegateUidTimes);
+
+        // Simulate a success login with NET_CAPABILITY_VALIDATED callback.
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        nc.setCapability(NET_CAPABILITY_VALIDATED, true);
+        notifyValidatedChangedAndDismissed(nc);
+
+        // Send another navigation start event, verify that network won't be reevaluated
+        // again after login.
         callback.onNavigationEvent(NAVIGATION_STARTED, null /* extras */);
         assertEquals(1, cp.mReevaluateTimes);
         assertEquals(1, cp.mSetDelegateUidTimes);
@@ -1487,6 +1508,21 @@ public class CaptivePortalLoginActivityTest {
         verifyCaptivePortalLoginMetrics(false /* expectWebview */,
                 CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS,
                 CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_UNKNOWN);
+
+        // Simulate to bring the captive portal activity back to foreground by launching a
+        // new activity with the same EXTRA_CAPTIVE_PORTAL.
+        final Context ctx = getInstrumentation().getContext();
+        final MockCaptivePortal cp = getCaptivePortal();
+        final Intent intent = makeIntent(ctx, TEST_URL, false /* useOldInterface */, cp);
+        ActivityScenario.launch(intent);
+        getInstrumentation().waitForIdleSync();
+
+        // After bringing the activity to the foreground, trigger another NET_CAPABILITY_VALIDATED
+        // callback and verify that the dismiss logic does not run a second time.
+        notifyCapabilitiesChanged(nc);
+        assertEquals(cp.mDismissTimes, 1); // the portal has been dismissed once before.
+        assertEquals(cp.mIgnoreTimes, 0);
+        assertEquals(cp.mUseTimes, 0);
     }
 
     @Test
