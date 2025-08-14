@@ -949,7 +949,8 @@ public class CaptivePortalLoginActivity extends Activity {
                 handleCapabilitiesChanged(network, nc);
             }
         };
-        mCm.registerNetworkCallback(new NetworkRequest.Builder().build(), mNetworkCallback);
+        mCm.registerNetworkCallback(new NetworkRequest.Builder().build(), mNetworkCallback,
+                mHandler);
 
         // If the network has disappeared, exit.
         final NetworkCapabilities networkCapabilities = mCm.getNetworkCapabilities(mNetwork);
