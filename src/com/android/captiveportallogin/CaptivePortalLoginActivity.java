@@ -113,6 +113,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.ChecksSdkIntAtLeast;
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -217,11 +218,17 @@ public class CaptivePortalLoginActivity extends Activity {
     // This member is just used in the UI thread model(e.g. onCreate and onDestroy), so non-final
     // should be fine.
     private boolean mCaptivePortalCustomTabsEnabled;
+    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.S)
+    private boolean mUsingCustomTabs;
     // Ensures that done() happens once exactly, handling concurrent callers with atomic operations.
     private final AtomicBoolean isDone = new AtomicBoolean(false);
     // Must only be touched on the UI thread. This must be initialized to false for thread
     // visibility reasons (if initialized to true, the UI thread may still see false).
     private boolean mIsResumed = false;
+    // Indicates the user's login state for the portal. This is set to true if the user is logging
+    // in, and false if the user is already logged in, or null before the first NetworkCapabilities
+    // change has been received.
+    private Boolean mIsPortal;
     private CustomTabsMenuItemReceiver mCustomTabsMenuItemReceiver;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
 
@@ -259,7 +266,7 @@ public class CaptivePortalLoginActivity extends Activity {
 
         @Override
         public void onNavigationEvent(int navigationEvent, @Nullable Bundle extras) {
-            if (navigationEvent == NAVIGATION_STARTED) {
+            if (mParent.mIsPortal && navigationEvent == NAVIGATION_STARTED) {
                 mParent.mCaptivePortal.reevaluateNetwork();
             }
             if (navigationEvent == TAB_HIDDEN) {
@@ -948,6 +955,11 @@ public class CaptivePortalLoginActivity extends Activity {
             public void onCapabilitiesChanged(Network network, NetworkCapabilities nc) {
                 handleCapabilitiesChanged(network, nc);
             }
+
+            @Override
+            public void onLinkPropertiesChanged(Network network, LinkProperties lp) {
+                handleLinkPropertiesChanged(network, lp);
+            }
         };
         mCm.registerNetworkCallback(new NetworkRequest.Builder().build(), mNetworkCallback,
                 mHandler);
@@ -963,7 +975,9 @@ public class CaptivePortalLoginActivity extends Activity {
 
         final boolean forceWebview = getIntent().getBooleanExtra(EXTRA_USE_OLD_INTERFACE, false);
         final String customTabsProviderPackageName = getCustomTabsProviderPackageIfEnabled();
-        if (forceWebview || customTabsProviderPackageName == null || !SdkLevel.isAtLeastS()) {
+        mUsingCustomTabs =
+                !forceWebview && customTabsProviderPackageName != null && SdkLevel.isAtLeastS();
+        if (!mUsingCustomTabs) {
             if (!SdkLevel.isAtLeastS()) {
                 mCaptivePortalLoginMetrics.setReason(
                         CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R);
@@ -1083,10 +1097,46 @@ public class CaptivePortalLoginActivity extends Activity {
     @VisibleForTesting
     void handleCapabilitiesChanged(@NonNull final Network network,
             @NonNull final NetworkCapabilities nc) {
-        if (network.equals(mNetwork) && nc.hasCapability(NET_CAPABILITY_VALIDATED)) {
-            // Dismiss when login is no longer needed since network has validated, exit.
+        if (!network.equals(mNetwork)) return;
+
+        // The sequence of network capabilities for a captive portal network:
+        // 1. `NET_CAPABILITY_CAPTIVE_PORTAL` is present initially, as soon as the portal
+        //    is detected.
+        // 2. `NET_CAPABILITY_VALIDATED` appears later, after the user has signed in and network
+        //    validation completes successfully.
+        final boolean wasPortal = mIsPortal != null && mIsPortal;
+        final boolean isPortalNow = !nc.hasCapability(NET_CAPABILITY_VALIDATED);
+        final boolean justLoggedIn = wasPortal && !isPortalNow;
+
+        mIsPortal = isPortalNow;
+        if ((mUsingCustomTabs && justLoggedIn) || (!mUsingCustomTabs && !isPortalNow)) {
+            // Dismiss the portal (if using the Webview) or move the portal to backstack
+            // (if using the custom tabs) when login is no longer needed since network has
+            // validated.
             done(Result.DISMISSED);
         }
+    }
+
+    @VisibleForTesting
+    void handleLinkPropertiesChanged(@NonNull final Network network,
+            @NonNull final LinkProperties lp) {
+        if (!mNetwork.equals(network)) return;
+
+        // The custom tab isn't initialized. The app is using WebView.
+        if (!mUsingCustomTabs) return;
+
+        // The private DNS bypass isn't supported on Android V and below for Custom tabs,
+        // the activity should be dismissed if a user enables private DNS in settings while
+        // a custom tab is active. The WebView will then be launched when the activity is
+        // recreated.
+        if (SdkLevel.isAtLeastB()) return;
+
+        // Private DNS was not enabled when the app launched, otherwise, mUsingCustomTabs
+        // would be false.
+        if (lp.getPrivateDnsServerName() == null) return;
+
+        // TODO: log this event metrics.
+        done(Result.DISMISSED);
     }
 
     // Find WebView's proxy BroadcastReceiver and prompt it to read proxy system properties.
@@ -1142,6 +1192,14 @@ public class CaptivePortalLoginActivity extends Activity {
                 break;
         }
         mCaptivePortalLoginMetrics.statsWrite();
+        if (result == Result.DISMISSED && mUsingCustomTabs) {
+            // The user may resume their session in the custom tab portal from the background and
+            // trigger new network validation checks (e.g., by refreshing the page or navigating
+            // elsewhere). Therefore, continue ignoring upcoming network validation events to ensure
+            // the portal remains open.
+            moveTaskToBack(true);
+            return;
+        }
         finishAndRemoveTask();
     }
 
