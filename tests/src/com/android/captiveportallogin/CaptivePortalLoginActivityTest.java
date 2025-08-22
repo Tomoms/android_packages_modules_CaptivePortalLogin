@@ -1543,7 +1543,7 @@ public class CaptivePortalLoginActivityTest {
         final Context ctx = getInstrumentation().getContext();
         final MockCaptivePortal cp = getCaptivePortal();
         final Intent intent = makeIntent(ctx, TEST_URL, false /* useOldInterface */, cp);
-        ActivityScenario.launch(intent);
+        mActivityScenario = ActivityScenario.launch(intent);
         getInstrumentation().waitForIdleSync();
 
         // After bringing the activity to the foreground, trigger another NET_CAPABILITY_VALIDATED
