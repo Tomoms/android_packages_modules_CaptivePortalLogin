@@ -848,7 +848,6 @@ public class CaptivePortalLoginActivityTest {
 
     @Test
     public void testVenueFriendlyNameTitle() throws Exception {
-        assumeTrue(isAtLeastS());
         final LinkProperties linkProperties = new LinkProperties();
         CaptivePortalData.Builder captivePortalDataBuilder = new CaptivePortalData.Builder();
         // TODO: Use reflection for setVenueFriendlyName until shims are available
@@ -917,13 +916,6 @@ public class CaptivePortalLoginActivityTest {
         final int devApiLevel = Build.VERSION.SDK_INT
                 + ("REL".equals(Build.VERSION.CODENAME) ? 0 : 1);
         return devApiLevel > apiLevel;
-    }
-
-    /**
-     * Check whether the device supports in-development or final S networking APIs.
-     */
-    private static boolean isAtLeastS() {
-        return isReleaseOrDevelopmentApiAbove(Build.VERSION_CODES.R);
     }
 
     private static boolean isEventually(BooleanSupplier condition, long timeout)

@@ -975,13 +975,8 @@ public class CaptivePortalLoginActivity extends Activity {
 
         final boolean forceWebview = getIntent().getBooleanExtra(EXTRA_USE_OLD_INTERFACE, false);
         final String customTabsProviderPackageName = getCustomTabsProviderPackageIfEnabled();
-        mUsingCustomTabs =
-                !forceWebview && customTabsProviderPackageName != null && SdkLevel.isAtLeastS();
+        mUsingCustomTabs = !forceWebview && customTabsProviderPackageName != null;
         if (!mUsingCustomTabs) {
-            if (!SdkLevel.isAtLeastS()) {
-                mCaptivePortalLoginMetrics.setReason(
-                        CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R);
-            }
             if (forceWebview) {
                 mCaptivePortalLoginMetrics.setReason(
                         CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE);
