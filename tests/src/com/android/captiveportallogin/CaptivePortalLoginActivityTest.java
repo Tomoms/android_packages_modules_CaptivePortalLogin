@@ -194,7 +194,7 @@ public class CaptivePortalLoginActivityTest {
     private static DownloadService.DownloadServiceBinder sDownloadServiceBinder;
     private static CustomTabsClient sMockCustomTabsClient;
     private static CaptivePortalLoginMetrics sMockCaptivePortalLoginMetrics;
-    private static ArrayMap<String, Boolean> sFeatureFlags = new ArrayMap<>();
+    private static final ArrayMap<String, Boolean> sFeatureFlags = new ArrayMap<>();
     private static boolean sIsMultiNetworkingSupportedByProvider;
     private static Bundle sIntentExtrasForceWebview;
     private static Network sNetworkForceWebview;
@@ -476,8 +476,6 @@ public class CaptivePortalLoginActivityTest {
         if (mTestNetworkTracker != null) {
             runAsShell(MANAGE_TEST_NETWORKS, mTestNetworkTracker::teardown);
         }
-        // Clean up the feature flags to not mess up the next test case.
-        sFeatureFlags.clear();
     }
 
     private Intent makeIntent(Context context, String url, boolean useOldInterface,
@@ -632,7 +630,6 @@ public class CaptivePortalLoginActivityTest {
     }
 
     @Test @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
-    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = false)
     public void testVpnMsgOrLinkToBrowser() throws Exception {
         // After Android R(including), DevicePolicyManager allows the caller who has the
         // PERMISSION_MAINLINE_NETWORK_STACK can call the isAlwaysOnVpnLockdownEnabled() to get the
