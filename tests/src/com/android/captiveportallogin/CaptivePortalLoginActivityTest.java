@@ -43,7 +43,7 @@ import static androidx.test.espresso.web.webdriver.DriverAtoms.findElement;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.webClick;
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 
-import static com.android.captiveportallogin.CaptivePortalLoginActivity.EXTRA_USE_OLD_INTERFACE;
+import static com.android.captiveportallogin.CaptivePortalLoginActivity.EXTRA_USE_CLASSIC_VIEW;
 import static com.android.captiveportallogin.CaptivePortalLoginFlags.CAPTIVE_PORTAL_CUSTOM_TABS;
 import static com.android.captiveportallogin.DownloadService.DOWNLOAD_ABORTED_REASON_FILE_TOO_LARGE;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS;
@@ -52,7 +52,7 @@ import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLogi
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_UNKNOWN;
-import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_CLASSIC_VIEW;
 import static com.android.testutils.TestNetworkTrackerKt.initTestNetwork;
 import static com.android.testutils.TestPermissionUtil.runAsShell;
 
@@ -181,7 +181,7 @@ public class CaptivePortalLoginActivityTest {
             DownloadService.class.getName();
     private static final int CUSTOM_TAB_MENU_ITEM_DO_NOT_USE_THIS_NETWORK = 0;
     private static final int CUSTOM_TAB_MENU_ITEM_USE_THIS_NETWORK = 1;
-    private static final int CUSTOM_TAB_MENU_ITEM_USE_OLD_INTERFACE = 2;
+    private static final int CUSTOM_TAB_MENU_ITEM_USE_CLASSIC_VIEW = 2;
 
     private ActivityScenario<InstrumentedCaptivePortalLoginActivity> mActivityScenario;
     private Network mNetwork = new Network(TEST_NETID);
@@ -478,7 +478,7 @@ public class CaptivePortalLoginActivityTest {
         }
     }
 
-    private Intent makeIntent(Context context, String url, boolean useOldInterface,
+    private Intent makeIntent(Context context, String url, boolean useClassicView,
             Parcelable captivePortal) {
         return new Intent(context, InstrumentedCaptivePortalLoginActivity.class)
                 .setAction(ACTION_CAPTIVE_PORTAL_SIGN_IN)
@@ -486,16 +486,16 @@ public class CaptivePortalLoginActivityTest {
                 .putExtra(EXTRA_NETWORK, mNetwork)
                 .putExtra(EXTRA_CAPTIVE_PORTAL_USER_AGENT, TEST_USERAGENT)
                 .putExtra(EXTRA_CAPTIVE_PORTAL, captivePortal)
-                .putExtra(EXTRA_USE_OLD_INTERFACE, useOldInterface);
+                .putExtra(EXTRA_USE_CLASSIC_VIEW, useClassicView);
     }
 
     private void initActivity(String url) {
-        initActivity(url, false /* useOldInterface */);
+        initActivity(url, false /* useClassicView */);
     }
 
-    private void initActivity(String url, boolean useOldInterface) {
+    private void initActivity(String url, boolean useClassicView) {
         final Context ctx = getInstrumentation().getContext();
-        final Intent intent = makeIntent(ctx, url, useOldInterface, new MockCaptivePortal());
+        final Intent intent = makeIntent(ctx, url, useClassicView, new MockCaptivePortal());
         mActivityScenario = ActivityScenario.launch(intent);
         mActivityScenario.onActivity(activity -> {
             getInstrumentation().getUiAutomation().adoptShellPermissionIdentity(
@@ -510,7 +510,7 @@ public class CaptivePortalLoginActivityTest {
     @Test
     public void testonCreateWithNullCaptivePortal() throws Exception {
         final Context ctx = getInstrumentation().getContext();
-        final Intent intent = makeIntent(ctx, TEST_URL, false /* useOldInterface */,
+        final Intent intent = makeIntent(ctx, TEST_URL, false /* useClassicView */,
                 (Bundle) null /* CaptivePortal */);
         try (ActivityScenario<InstrumentedCaptivePortalLoginActivity> scenario =
                      ActivityScenario.launch(intent)) {
@@ -1455,7 +1455,7 @@ public class CaptivePortalLoginActivityTest {
         assertEquals(TEST_URL, sIntentExtrasForceWebview.getString(EXTRA_CAPTIVE_PORTAL_URL));
         assertEquals(TEST_USERAGENT,
                 sIntentExtrasForceWebview.getString(EXTRA_CAPTIVE_PORTAL_USER_AGENT));
-        assertEquals(true, sIntentExtrasForceWebview.getBoolean(EXTRA_USE_OLD_INTERFACE));
+        assertEquals(true, sIntentExtrasForceWebview.getBoolean(EXTRA_USE_CLASSIC_VIEW));
     }
 
     @Test
@@ -1466,7 +1466,7 @@ public class CaptivePortalLoginActivityTest {
         // specific UI of chrome. For those platforms without chrome browser installed
         // such as aosp platforms, then skip this test.
         assumeTrue(isChromeInstalled());
-        runCustomTabsMenuItemsTest(CUSTOM_TAB_MENU_ITEM_USE_OLD_INTERFACE);
+        runCustomTabsMenuItemsTest(CUSTOM_TAB_MENU_ITEM_USE_CLASSIC_VIEW);
         getInstrumentation().waitForIdleSync();
         assertEquals(mNetwork, sNetworkForceWebview);
         verifyIntentExtrasForForceWebview();
@@ -1476,10 +1476,10 @@ public class CaptivePortalLoginActivityTest {
         clearInvocations(sMockCustomTabsClient);
 
         // Simulate launching a new CaptivePortalLoginActivity with intent including
-        // EXTRA_USE_OLD_INTERFACE, which is set when menu item "Use old interface" is
+        // EXTRA_USE_CLASSIC_VIEW, which is set when menu item "Use classic view" is
         // clicked, and verify the Webview should be initialized instead of CCT.
         Intents.init();
-        initActivity(TEST_URL, true /* useOldInterface */);
+        initActivity(TEST_URL, true /* useClassicView */);
         verifyWebViewInitialization();
     }
 
@@ -1531,7 +1531,7 @@ public class CaptivePortalLoginActivityTest {
         // new activity with the same EXTRA_CAPTIVE_PORTAL.
         final Context ctx = getInstrumentation().getContext();
         final MockCaptivePortal cp = getCaptivePortal();
-        final Intent intent = makeIntent(ctx, TEST_URL, false /* useOldInterface */, cp);
+        final Intent intent = makeIntent(ctx, TEST_URL, false /* useClassicView */, cp);
         mActivityScenario = ActivityScenario.launch(intent);
         getInstrumentation().waitForIdleSync();
 
@@ -1577,9 +1577,9 @@ public class CaptivePortalLoginActivityTest {
 
     @Test
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
-    public void testCaptivePortalMetrics_fallbackToWebview_useOldInterface()
+    public void testCaptivePortalMetrics_fallbackToWebview_useClassicView()
             throws Exception {
-        initActivity(TEST_URL, true /* useOldInterface */);
+        initActivity(TEST_URL, true /* useClassicView */);
         Intents.init();
         verifyWebViewInitialization();
 
@@ -1588,7 +1588,7 @@ public class CaptivePortalLoginActivityTest {
         notifyValidatedChangedAndDismissed(nc);
         verifyCaptivePortalLoginMetrics(true /* expectWebview */,
                 CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS,
-                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE);
+                CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_CLASSIC_VIEW);
     }
 
     // only run this test on V and below when the private DNS is on, otherwise, metrics won't be
