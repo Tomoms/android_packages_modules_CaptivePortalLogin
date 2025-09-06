@@ -31,6 +31,7 @@ import static android.view.accessibility.AccessibilityEvent.TYPE_NOTIFICATION_ST
 import static androidx.browser.customtabs.CustomTabsCallback.NAVIGATION_STARTED;
 import static androidx.browser.customtabs.CustomTabsService.ACTION_CUSTOM_TABS_CONNECTION;
 import static androidx.lifecycle.Lifecycle.State.DESTROYED;
+import static androidx.test.espresso.Espresso.pressBack;
 import static androidx.test.espresso.intent.Intents.intended;
 import static androidx.test.espresso.intent.Intents.intending;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
@@ -40,7 +41,9 @@ import static androidx.test.espresso.intent.matcher.IntentMatchers.hasPackage;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.isInternal;
 import static androidx.test.espresso.web.sugar.Web.onWebView;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.findElement;
+import static androidx.test.espresso.web.webdriver.DriverAtoms.getText;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.webClick;
+import static androidx.test.espresso.web.assertion.WebViewAssertions.webMatches;
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 
 import static com.android.captiveportallogin.CaptivePortalLoginActivity.EXTRA_USE_CLASSIC_VIEW;
@@ -60,6 +63,7 @@ import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertNotNull;
 import static junit.framework.Assert.assertNull;
 
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.assertFalse;
@@ -108,6 +112,7 @@ import android.os.ServiceSpecificException;
 import android.system.OsConstants;
 import android.util.ArrayMap;
 import android.view.accessibility.AccessibilityEvent;
+import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -121,6 +126,7 @@ import androidx.test.espresso.web.webdriver.Locator;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.SdkSuppress;
 import androidx.test.filters.SmallTest;
+import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject;
 import androidx.test.uiautomator.UiSelector;
@@ -146,6 +152,7 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.ServerSocket;
+import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -153,6 +160,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
@@ -788,6 +796,67 @@ public class CaptivePortalLoginActivityTest {
     }
 
     @Test
+    public void testWebViewBackButton() throws Exception {
+        final HttpServer server = new HttpServer();
+        final String page1Query = "index.html";
+        final String page2Query = "some_other.html";
+        final String page1LinkId = "page1_link";
+        final String page1LinkText = "Go to some other page";
+        final String page2ContentId = "page2_content";
+        final String page2ContentText = "This is the other page";
+        server.start();
+
+        // page1 contains a link that takes the whole page so clicking anywhere in the webview
+        // works, this configuration is necessary to make the UiDevice based click work.
+        server.setResponseBody(page1Query,
+                "<p><a style=\"position: absolute; display: block; top: 0; left: 0; width: 100%; "
+                        + "height: 100%;\" href=\""
+                        + page2Query + "\" id='" + page1LinkId
+                        + "'>" + page1LinkText + "</a></p>");
+        server.setResponseBody(page2Query,
+                "<p id='" + page2ContentId + "'>" + page2ContentText + "</p>");
+        ActivityScenario.launch(RequestDismissKeyguardActivity.class);
+        initActivity(server.makeUrl(page1Query));
+        Intents.init();
+        // Check page 1 is loaded.
+        onWebView().withElement(findElement(Locator.ID, page1LinkId))
+                .check(webMatches(getText(), containsString(page1LinkText)));
+
+        // Use the actually click event to perform the navigation.
+        // This is a hack to work around the issue that webClick() doesn't properly store
+        // navigation history in the webview during testing, so we'll simulate an actual user
+        // click instead.
+        final UiDevice device = UiDevice.getInstance(getInstrumentation());
+        device.findObject(By.clazz(WebView.class.getName())).click();
+
+        // Wait for the second page to load by waiting for the webview to be able to go back.
+        final AtomicReference<WebView> webViewRef = new AtomicReference<>();
+        mActivityScenario.onActivity(activity -> webViewRef.set(
+                activity.findViewById(R.id.webview)));
+        final AtomicBoolean canGoBack = new AtomicBoolean(false);
+        assertTrue("Timeout waiting for second page to load", isEventually(() -> {
+            getInstrumentation().runOnMainSync(() -> {
+                if (webViewRef.get() != null) {
+                    canGoBack.set(webViewRef.get().canGoBack());
+                }
+            });
+            return canGoBack.get();
+        }, TEST_TIMEOUT_MS));
+
+        // Check the second page is loaded.
+        onWebView().withElement(findElement(Locator.ID, page2ContentId))
+                .check(webMatches(getText(), containsString(page2ContentText)));
+
+        // Now that a history entry for page2 exists, pressing back should navigate back.
+        pressBack();
+
+        // Check we are back on page 1
+        onWebView().withElement(findElement(Locator.ID, page1LinkId))
+                .check(webMatches(getText(), containsString(page1LinkText)));
+        server.stop();
+    }
+
+    @Test
     public void testDownload() throws Exception {
         // Setup the server with a single link on the portal page, leading to a download
         final HttpServer server = new HttpServer();
@@ -796,7 +865,7 @@ public class CaptivePortalLoginActivityTest {
         final String filename = "testfile.png";
         final String mimetype = "image/png";
         server.setResponseBody(TEST_URL_QUERY,
-                "<a id='" + linkIdDownload + "' href='?" + downloadQuery + "'>Download</a>");
+                "<a id='" + linkIdDownload + "' href='" + downloadQuery + "'>Download</a>");
         server.setResponse(downloadQuery, "This is a test file", mimetype, Collections.singletonMap(
                 "Content-Disposition", "attachment; filename=\"" + filename + "\""));
         server.start();
@@ -962,10 +1031,7 @@ public class CaptivePortalLoginActivityTest {
             return new Uri.Builder()
                     .scheme("http")
                     .encodedAuthority(TEST_PORTAL_HOSTNAME + ":" + mSocket.getLocalPort())
-                    // Explicitly specify an empty path to match the format of URLs returned by
-                    // WebView (for example in onDownloadStart)
-                    .path("/")
-                    .query(query)
+                    .path(query)
                     .build()
                     .toString();
         }
@@ -981,7 +1047,8 @@ public class CaptivePortalLoginActivityTest {
 
         @Override
         public Response serve(IHTTPSession session) {
-            final MockResponse mockResponse = mResponses.get(session.getQueryParameterString());
+            final String path = URI.create(session.getUri()).getPath().substring(1);
+            final MockResponse mockResponse = mResponses.get(path);
             if (mockResponse == null) {
                 // Default response is a 404
                 return super.serve(session);
@@ -1004,7 +1071,7 @@ public class CaptivePortalLoginActivityTest {
         // Setup the server with a single link on the portal page, leading to a download
         final HttpServer server = new HttpServer();
         server.setResponseBody(TEST_URL_QUERY,
-                "<a id='" + linkIdDownload + "' href='?" + downloadQuery + "'>Download</a>");
+                "<a id='" + linkIdDownload + "' href='" + downloadQuery + "'>Download</a>");
         server.setResponse(downloadQuery, "This is a test file", mimetype, Collections.singletonMap(
                 "Content-Disposition", "attachment; filename=\"" + filename + "\""));
         server.start();
