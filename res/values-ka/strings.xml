@@ -25,6 +25,8 @@
     <string name="page_info_address" msgid="1290683284404217554">"მისამართი:"</string>
     <string name="page_info" msgid="46593086046896385">"გვერდის ინფორმაცია"</string>
     <string name="action_use_old_interface" msgid="6140392789310499295">"ძველი ინტერფეისის გამოყენება"</string>
+    <!-- no translation found for action_use_classic_view (948846396167837386) -->
+    <skip />
     <string name="downloading_paramfile" msgid="685182551665849043">"მიმდინარეობს %1$s-ის ჩამოტვირთვა"</string>
     <string name="download_completed" msgid="5430865338124330584">"ჩამოტვირთვა დასრულდა"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"%1$s-ის ჩამოტვირთვა ვერ მოხერხდა"</string>

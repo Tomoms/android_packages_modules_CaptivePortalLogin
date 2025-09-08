@@ -27,7 +27,7 @@ import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLogi
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_UNKNOWN;
-import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_CLASSIC_VIEW;
 
 import android.os.Process;
 
@@ -77,7 +77,7 @@ public class CaptivePortalLoginMetrics {
         CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_CCT,
         CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK,
         CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_PRIVATE_DNS_ENABLED_V_AND_BELOW,
-        CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_OLD_INTERFACE
+        CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_CLASSIC_VIEW
         // TODO: add new enum here
     })
     @Retention(RetentionPolicy.SOURCE)

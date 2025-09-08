@@ -30,6 +30,10 @@
     correctly display this networks' home page. This will use an old, but better
     tested, interface to try and log in. [CHAR LIMIT=35] -->
     <string name="action_use_old_interface">Use old interface</string>
+    <!-- Menu item for users to try another way to log in if the browser cannot
+    correctly display this networks' home page. This will use a classic, but better
+    tested, view to try and log in. [CHAR LIMIT=35] [BACKUP_MESSAGE_ID: 6140392789310499295]-->
+    <string name="action_use_classic_view">Use classic view</string>
     <!-- Text shown in notification to indicate that a file (filename as parameter) is being downloaded -->
     <string name="downloading_paramfile">Downloading %1$s</string>
     <!-- Text shown in notification to indicate that a download has completed successfully -->
