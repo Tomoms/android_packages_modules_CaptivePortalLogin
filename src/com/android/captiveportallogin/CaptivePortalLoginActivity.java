@@ -272,10 +272,12 @@ public class CaptivePortalLoginActivity extends Activity {
             if (navigationEvent == TAB_HIDDEN) {
                 // Run on UI thread to make sure mIsResumed is correctly visible.
                 mParent.runOnUiThread(() -> {
-                    // The tab is hidden when the browser's activity is hidden : screen off,
+                    // The tab is hidden when the browser's activity is hidden: screen off,
                     // home button, or press the close button on the tab. In the last case,
                     // close the app. The activity behind the tab is only resumed in that case.
-                    if (mParent.mIsResumed) mParent.done(Result.DISMISSED);
+                    if (mParent.mIsResumed) {
+                        mParent.finishAndRemoveTask();
+                    }
                 });
             }
         }

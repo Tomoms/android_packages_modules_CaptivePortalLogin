@@ -1272,6 +1272,7 @@ public class CaptivePortalLoginActivityTest {
     private MockCaptivePortal prepareCaptivePortalUsingCustomTabs(
             boolean isDelegateUidSetSuccessfully, final LinkProperties linkProperties)
             throws Exception {
+        ActivityScenario.launch(RequestDismissKeyguardActivity.class);
         sIsMultiNetworkingSupportedByProvider = true;
         doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
 
@@ -1370,6 +1371,26 @@ public class CaptivePortalLoginActivityTest {
             throws Exception {
         final LinkProperties lp = new LinkProperties();
         runCaptivePortalUsingCustomTabsTest(false /* isDelegateUidSetSuccessfully */, lp);
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testCaptivePortalUsingCustomTabs_closeAppWhenTabHiddenButParentStillResumed()
+            throws Exception {
+        final LinkProperties lp = new LinkProperties();
+        prepareCaptivePortalUsingCustomTabs(true /* isDelegateUidSetSuccessfully */, lp);
+
+        final ArgumentCaptor<CustomTabsCallback> captor =
+                ArgumentCaptor.forClass(CustomTabsCallback.class);
+        verify(sMockCustomTabsClient, timeout(TEST_TIMEOUT_MS)).newSession(captor.capture());
+        final CustomTabsCallback callback = captor.getValue();
+        assertNotNull(callback);
+
+        callback.onNavigationEvent(CustomTabsCallback.TAB_HIDDEN, null);
+
+        waitForDestroyedState();
+        assertEquals(DESTROYED, mActivityScenario.getState());
     }
 
     // Only run this test on R+ and B-, because on B and above private DNS bypass is supported,
