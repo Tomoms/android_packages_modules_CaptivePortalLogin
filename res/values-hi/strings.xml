@@ -25,6 +25,8 @@
     <string name="page_info_address" msgid="1290683284404217554">"पता:"</string>
     <string name="page_info" msgid="46593086046896385">"पेज की जानकारी"</string>
     <string name="action_use_old_interface" msgid="6140392789310499295">"पुराने इंटरफ़ेस का इस्तेमाल करें"</string>
+    <!-- no translation found for action_use_classic_view (948846396167837386) -->
+    <skip />
     <string name="downloading_paramfile" msgid="685182551665849043">"%1$s को डाउनलोड किया जा रहा है"</string>
     <string name="download_completed" msgid="5430865338124330584">"डाउनलोड पूरा हुआ"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"%1$s को डाउनलोड नहीं किया जा सका"</string>

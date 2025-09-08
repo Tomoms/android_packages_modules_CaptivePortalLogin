@@ -25,6 +25,8 @@
     <string name="page_info_address" msgid="1290683284404217554">"Naslov:"</string>
     <string name="page_info" msgid="46593086046896385">"Podatki o strani"</string>
     <string name="action_use_old_interface" msgid="6140392789310499295">"Uporabi stari vmesnik"</string>
+    <!-- no translation found for action_use_classic_view (948846396167837386) -->
+    <skip />
     <string name="downloading_paramfile" msgid="685182551665849043">"Prenašanje datoteke »%1$s«"</string>
     <string name="download_completed" msgid="5430865338124330584">"Prenos je končan"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"Datoteke »%1$s« ni bilo mogoče prenesti"</string>
