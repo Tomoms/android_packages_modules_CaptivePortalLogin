@@ -74,6 +74,11 @@
         service for downloads -->
         <service android:name=".DownloadService" android:exported="false"
                  android:foregroundServiceType="dataSync" />
+        <!-- This service is intended to be used by custom tab browsers. A permission is required
+        as some tooling will warn if exported services are not protected, and browsers should have
+        INTERNET, but it is fine if other apps bind to it as it does nothing. -->
+        <service android:name=".CustomTabsKeepAliveService" android:exported="true"
+                 android:permission="android.permission.INTERNET"/>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.android.captiveportallogin.fileprovider"
