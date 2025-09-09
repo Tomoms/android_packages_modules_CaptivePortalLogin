@@ -111,6 +111,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.window.OnBackInvokedDispatcher;
 
 import androidx.annotation.ChecksSdkIntAtLeast;
 import androidx.annotation.GuardedBy;
@@ -980,6 +981,16 @@ public class CaptivePortalLoginActivity extends Activity {
                 mCaptivePortalLoginMetrics.setReason(
                         CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_CLASSIC_VIEW);
             }
+            if (SdkLevel.isAtLeastB()) {
+                getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                        OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                        () -> {
+                            if (!webViewHandleBackPress()) {
+                                finishAfterTransition();
+                            }
+                        }
+                );
+            }
             initializeWebView();
         } else {
             enableEdgeToEdge();
@@ -1203,13 +1214,22 @@ public class CaptivePortalLoginActivity extends Activity {
         return true;
     }
 
-    @Override
-    public void onBackPressed() {
+    private boolean webViewHandleBackPress() {
         final WebView myWebView = findViewById(R.id.webview);
         // The web view is null if the app is using custom tabs
         if (null != myWebView && myWebView.canGoBack() && mWebViewClient.allowBack()) {
             myWebView.goBack();
+            return true;
         } else {
+            return false;
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        // This method is not being called from target SDK 36+. In SDK 36+
+        // registerOnBackInvokedCallback() is used instead.
+        if (!webViewHandleBackPress()) {
             super.onBackPressed();
         }
     }
