@@ -35,15 +35,15 @@ import static androidx.test.espresso.Espresso.pressBack;
 import static androidx.test.espresso.intent.Intents.intended;
 import static androidx.test.espresso.intent.Intents.intending;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
-import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasData;
+import static androidx.test.espresso.intent.matcher.IntentMatchers.hasExtra;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.hasPackage;
 import static androidx.test.espresso.intent.matcher.IntentMatchers.isInternal;
+import static androidx.test.espresso.web.assertion.WebViewAssertions.webMatches;
 import static androidx.test.espresso.web.sugar.Web.onWebView;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.findElement;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.getText;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.webClick;
-import static androidx.test.espresso.web.assertion.WebViewAssertions.webMatches;
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 
 import static com.android.captiveportallogin.CaptivePortalLoginActivity.EXTRA_USE_CLASSIC_VIEW;
@@ -51,11 +51,12 @@ import static com.android.captiveportallogin.CaptivePortalLoginFlags.CAPTIVE_POR
 import static com.android.captiveportallogin.DownloadService.DOWNLOAD_ABORTED_REASON_FILE_TOO_LARGE;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_FEATURE_NOT_ENABLED;
-import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_PRIVATE_DNS_ENABLED_V_AND_BELOW;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_PRIVATE_DNS_ENABLED_V_AND_BELOW;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_RUNNING_ANDROID_R;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_UNKNOWN;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_CLASSIC_VIEW;
+import static com.android.testutils.MiscAsserts.assertEventuallyTrue;
 import static com.android.testutils.TestNetworkTrackerKt.initTestNetwork;
 import static com.android.testutils.TestPermissionUtil.runAsShell;
 
@@ -73,7 +74,6 @@ import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -131,6 +131,7 @@ import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject;
 import androidx.test.uiautomator.UiSelector;
 
+import com.android.net.module.util.CollectionUtils;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreAfter;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
@@ -163,6 +164,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 import fi.iki.elonen.NanoHTTPD;
 
@@ -449,6 +451,7 @@ public class CaptivePortalLoginActivityTest {
             automation.dropShellPermissionIdentity();
         }
         mNetwork = mTestNetworkTracker.getNetwork();
+        Intents.init();
     }
 
     private static WifiInfo makeWifiInfo() {
@@ -475,7 +478,6 @@ public class CaptivePortalLoginActivityTest {
             // Note this may sometimes block for 45 seconds until
             // https://github.com/android/android-test/issues/676 is fixed
             mActivityScenario.close();
-            Intents.release();
             getInstrumentation().getUiAutomation().dropShellPermissionIdentity();
         }
         getInstrumentation().getUiAutomation().setOnAccessibilityEventListener(null);
@@ -484,6 +486,7 @@ public class CaptivePortalLoginActivityTest {
         if (mTestNetworkTracker != null) {
             runAsShell(MANAGE_TEST_NETWORKS, mTestNetworkTracker::teardown);
         }
+        Intents.release();
     }
 
     private Intent makeIntent(Context context, String url, boolean useClassicView,
@@ -575,9 +578,6 @@ public class CaptivePortalLoginActivityTest {
     @Test
     public void testHasVpnNetwork() throws Exception {
         initActivity(TEST_URL);
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
 
         // Test non-vpn case.
         configNonVpnNetwork();
@@ -591,9 +591,6 @@ public class CaptivePortalLoginActivityTest {
     @Test
     public void testIsAlwaysOnVpnEnabled() throws Exception {
         initActivity(TEST_URL);
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
 
         doReturn(false).when(sMockDevicePolicyManager).isAlwaysOnVpnLockdownEnabled(any());
         mActivityScenario.onActivity(activity -> assertFalse(activity.isAlwaysOnVpnEnabled()));
@@ -604,9 +601,6 @@ public class CaptivePortalLoginActivityTest {
 
     private void runVpnMsgOrLinkToBrowser(boolean useVpnMatcher) {
         initActivity(TEST_URL);
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
 
         // Test non-vpn case.
         configNonVpnNetwork();
@@ -691,9 +685,6 @@ public class CaptivePortalLoginActivityTest {
     @Test @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
     public void testNetworkCapabilitiesUpdate_RAndLater() throws Exception {
         initActivity(TEST_URL);
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
 
         // NetworkCapabilities updates w/o NET_CAPABILITY_VALIDATED.
         final NetworkCapabilities nc = new NetworkCapabilities();
@@ -712,9 +703,6 @@ public class CaptivePortalLoginActivityTest {
     @Test @SdkSuppress(maxSdkVersion = Build.VERSION_CODES.Q)
     public void testNetworkCapabilitiesUpdate_Q() throws Exception {
         initActivity(TEST_URL);
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
 
         final NetworkCapabilities nc = new NetworkCapabilities();
         nc.setCapability(NET_CAPABILITY_VALIDATED, true);
@@ -730,9 +718,6 @@ public class CaptivePortalLoginActivityTest {
         server.start();
         ActivityScenario.launch(RequestDismissKeyguardActivity.class);
         initActivity(server.makeUrl(TEST_URL_QUERY));
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
         // Mock all external intents
         intending(not(isInternal())).respondWith(new ActivityResult(RESULT_OK, null));
 
@@ -746,8 +731,9 @@ public class CaptivePortalLoginActivityTest {
         final String telUri = "tel:0123456789";
         final HttpServer server = runCustomSchemeTest(telUri);
 
-        final Intent sentIntent = Intents.getIntents().get(0);
-        assertEquals(Intent.ACTION_DIAL, sentIntent.getAction());
+        final Intent sentIntent = CollectionUtils.findFirst(Intents.getIntents(),
+                i -> i.getAction().equals(Intent.ACTION_DIAL));
+        assertNotNull(sentIntent);
         assertEquals(Uri.parse(telUri), sentIntent.getData());
 
         server.stop();
@@ -758,8 +744,9 @@ public class CaptivePortalLoginActivityTest {
         final String telUri = "sms:0123456789";
         final HttpServer server = runCustomSchemeTest(telUri);
 
-        final Intent sentIntent = Intents.getIntents().get(0);
-        assertEquals(Intent.ACTION_SENDTO, sentIntent.getAction());
+        final Intent sentIntent = CollectionUtils.findFirst(Intents.getIntents(),
+                i -> i.getAction().equals(Intent.ACTION_SENDTO));
+        assertNotNull(sentIntent);
         assertEquals(Uri.parse(telUri), sentIntent.getData());
 
         server.stop();
@@ -768,7 +755,6 @@ public class CaptivePortalLoginActivityTest {
     @Test
     public void testUnsupportedScheme() throws Exception {
         final HttpServer server = runCustomSchemeTest("mailto:test@example.com");
-        assertEquals(0, Intents.getIntents().size());
 
         // Mockito intents cannot be used for an intent sent in onDestroy, due to
         // https://github.com/android/android-test/issues/1119
@@ -817,7 +803,6 @@ public class CaptivePortalLoginActivityTest {
                 "<p id='" + page2ContentId + "'>" + page2ContentText + "</p>");
         ActivityScenario.launch(RequestDismissKeyguardActivity.class);
         initActivity(server.makeUrl(page1Query));
-        Intents.init();
         // Check page 1 is loaded.
         onWebView().withElement(findElement(Locator.ID, page1LinkId))
                 .check(webMatches(getText(), containsString(page1LinkText)));
@@ -872,9 +857,6 @@ public class CaptivePortalLoginActivityTest {
 
         ActivityScenario.launch(RequestDismissKeyguardActivity.class);
         initActivity(server.makeUrl(TEST_URL_QUERY));
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
 
         // Create a mock file to be returned when mocking the file chooser
         final Intent mockFileResponse = new Intent();
@@ -885,17 +867,19 @@ public class CaptivePortalLoginActivityTest {
         intending(hasAction(ACTION_CREATE_DOCUMENT)).respondWith(
                 new ActivityResult(RESULT_OK, mockFileResponse));
         // No intent fired yet
-        assertEquals(0, Intents.getIntents().size());
+        final Predicate<Intent> createDocumentMatcher = i ->
+                i.getAction().equals(ACTION_CREATE_DOCUMENT);
+        assertFalse(CollectionUtils.any(Intents.getIntents(), createDocumentMatcher));
 
         onWebView().withElement(findElement(Locator.ID, linkIdDownload))
                 .perform(webClick());
 
         // The create file intent should be fired when the download starts
-        assertTrue("Create file intent not received within timeout",
-                isEventually(() -> Intents.getIntents().size() == 1, TEST_TIMEOUT_MS));
+        assertEventuallyTrue("Create file intent not received within timeout", TEST_TIMEOUT_MS,
+                () -> CollectionUtils.any(Intents.getIntents(), createDocumentMatcher));
 
-        final Intent fileIntent = Intents.getIntents().get(0);
-        assertEquals(ACTION_CREATE_DOCUMENT, fileIntent.getAction());
+        final Intent fileIntent = CollectionUtils.findFirst(
+                Intents.getIntents(), createDocumentMatcher);
         assertEquals(mimetype, fileIntent.getType());
         assertEquals(filename, fileIntent.getStringExtra(Intent.EXTRA_TITLE));
 
@@ -932,9 +916,6 @@ public class CaptivePortalLoginActivityTest {
         when(sConnectivityManager.getLinkProperties(mNetwork)).thenReturn(linkProperties);
         configNonVpnNetwork();
         initActivity("https://tc.example.com/");
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
 
         // Verify that the correct venue friendly name is used
         mActivityScenario.onActivity(activity ->
@@ -946,9 +927,6 @@ public class CaptivePortalLoginActivityTest {
     public void testWifiSsid_Q() throws Exception {
         configNonVpnNetwork();
         initActivity("https://portal.example.com/");
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
         mActivityScenario.onActivity(activity ->
                 assertEquals(activity.getActionBar().getTitle(),
                         getInstrumentation().getContext().getString(R.string.action_bar_title,
@@ -960,9 +938,6 @@ public class CaptivePortalLoginActivityTest {
     public void testWifiSsid() throws Exception {
         configNonVpnNetwork();
         initActivity("https://portal.example.com/");
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
         mActivityScenario.onActivity(activity ->
                 assertEquals(activity.getActionBar().getTitle(),
                         getInstrumentation().getContext().getString(R.string.action_bar_title,
@@ -1078,9 +1053,6 @@ public class CaptivePortalLoginActivityTest {
 
         ActivityScenario.launch(RequestDismissKeyguardActivity.class);
         initActivity(server.makeUrl(TEST_URL_QUERY));
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
         return server;
     }
 
@@ -1143,9 +1115,6 @@ public class CaptivePortalLoginActivityTest {
     @Test
     public void testDirectlyOpen_onDownloadAborted() throws Exception {
         initActivity(TEST_URL);
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
         final Uri mockFile = Uri.parse("content://mockdata");
         final String expectMsg = getInstrumentation().getContext().getString(
                 R.string.file_too_large_cancel_download);
@@ -1237,21 +1206,24 @@ public class CaptivePortalLoginActivityTest {
         // Expect to see the spinner
         assertTrue(spinner.waitForExists(TEST_TIMEOUT_MS));
         // File does not start a create file intent, i.e. no file picker
-        assertEquals(0, Intents.getIntents().size());
+        assertFalse(CollectionUtils.any(Intents.getIntents(),
+                i -> i.getAction().equals(Intent.ACTION_CREATE_DOCUMENT)));
         // Trigger callback with negative result with other undesired other download file.
         mActivityScenario.onActivity(a ->
                 a.mProgressCallback.onDownloadComplete(otherFile, mimeType, otherDownloadId,
                         false));
         // Verify spinner is still visible and no intent to open the target file.
         assertTrue(spinner.exists());
-        assertEquals(0, Intents.getIntents().size());
+        assertFalse(CollectionUtils.any(Intents.getIntents(),
+                i -> i.getAction().equals(Intent.ACTION_VIEW)));
 
         // Trigger callback with positive result
         mActivityScenario.onActivity(a -> a.mProgressCallback.onDownloadComplete(
                 mockFile, mimeType, downloadId, true));
         // Verify intent sent to open the target file
-        final Intent sentIntent = Intents.getIntents().get(0);
-        assertEquals(Intent.ACTION_VIEW, sentIntent.getAction());
+        final Intent sentIntent = CollectionUtils.findFirst(Intents.getIntents(),
+                i -> i.getAction().equals(Intent.ACTION_VIEW));
+        assertNotNull(sentIntent);
         assertEquals(mimeType, sentIntent.getType());
         assertEquals(mockFile, sentIntent.getData());
         assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -1276,10 +1248,6 @@ public class CaptivePortalLoginActivityTest {
         sIsMultiNetworkingSupportedByProvider = true;
         doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
 
-        // Set up result stubbing for the CustomTabsIntent#launchUrl, this stub should be
-        // initialized before starting CaptivePortalLoginActivity, otherwise, no activity
-        // found to handle the CustomTabsIntent.
-        Intents.init();
         intending(hasPackage(TEST_CUSTOM_TABS_PACKAGE_NAME))
                 .respondWith(new ActivityResult(RESULT_OK, null));
         initActivity(TEST_URL);
@@ -1425,7 +1393,6 @@ public class CaptivePortalLoginActivityTest {
     }
 
     private void verifyUsingWebViewRatherThanCustomTabs() {
-        Intents.init();
         intending(hasPackage(TEST_CUSTOM_TABS_PACKAGE_NAME))
                 .respondWith(new ActivityResult(RESULT_OK, null));
         initActivity(TEST_URL);
@@ -1558,15 +1525,15 @@ public class CaptivePortalLoginActivityTest {
         getInstrumentation().waitForIdleSync();
         assertEquals(mNetwork, sNetworkForceWebview);
         verifyIntentExtrasForForceWebview();
-        Intents.release();
+    }
 
-        clearInvocations(sConnectivityManager);
-        clearInvocations(sMockCustomTabsClient);
-
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
+    public void testStartActivityWithUseClassicView() throws Exception {
         // Simulate launching a new CaptivePortalLoginActivity with intent including
         // EXTRA_USE_CLASSIC_VIEW, which is set when menu item "Use classic view" is
         // clicked, and verify the Webview should be initialized instead of CCT.
-        Intents.init();
         initActivity(TEST_URL, true /* useClassicView */);
         verifyWebViewInitialization();
     }
@@ -1588,9 +1555,6 @@ public class CaptivePortalLoginActivityTest {
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = false)
     public void testCaptivePortalMetrics_useWebview_dismissed() throws Exception {
         initActivity(TEST_URL);
-        // Initialize intent capturing after launching the activity to avoid capturing extra
-        // intents.
-        Intents.init();
 
         // NetworkCapabilities updates w/ NET_CAPABILITY_VALIDATED.
         final NetworkCapabilities nc = new NetworkCapabilities();
@@ -1668,7 +1632,6 @@ public class CaptivePortalLoginActivityTest {
     public void testCaptivePortalMetrics_fallbackToWebview_useClassicView()
             throws Exception {
         initActivity(TEST_URL, true /* useClassicView */);
-        Intents.init();
         verifyWebViewInitialization();
 
         final NetworkCapabilities nc = new NetworkCapabilities();
