@@ -119,6 +119,7 @@ import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsClient;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
+import androidx.browser.customtabs.CustomTabsSession;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.espresso.intent.Intents;
 import androidx.test.espresso.web.webdriver.Locator;
@@ -184,6 +185,7 @@ public class CaptivePortalLoginActivityTest {
     private static final String TEST_FRIENDLY_NAME = "Network friendly name";
     private static final String TEST_PORTAL_HOSTNAME = "localhost";
     private static final String TEST_CUSTOM_TABS_PACKAGE_NAME = "com.android.customtabs";
+    private static final String TEST_CUSTOM_TABS_CLASS = "com.android.customtabs.MockCustomTabs";
     private static final String TEST_WIFI_CONFIG_TYPE = "application/x-wifi-config";
     private static final String TEST_PRIVATE_DNS_SERVER = "dns.server";
     private static final String TEST_DOWNLOAD_SERVICE_COMPONENT_CLASS_NAME =
@@ -207,6 +209,7 @@ public class CaptivePortalLoginActivityTest {
     private static boolean sIsMultiNetworkingSupportedByProvider;
     private static Bundle sIntentExtrasForceWebview;
     private static Network sNetworkForceWebview;
+    private static String sMockCustomTabsPackageName;
     @Rule
     public final SetFeatureFlagsRule mSetFeatureFlagsRule =
             new SetFeatureFlagsRule((name, enabled) -> {
@@ -276,15 +279,19 @@ public class CaptivePortalLoginActivityTest {
                         mDownloadServiceBound.complete(conn));
                 getMainThreadHandler().post(() -> conn.onServiceConnected(
                         getInstrumentation().getComponentName(), sDownloadServiceBinder));
-            } else if (service.getAction().equals(ACTION_CUSTOM_TABS_CONNECTION)) {
+                return true;
+            } else if (service.getAction().equals(ACTION_CUSTOM_TABS_CONNECTION)
+                    && TEST_CUSTOM_TABS_PACKAGE_NAME.equals(service.getPackage())) {
                 assertTrue("CustomTabs foreground service was bound multiple times during the test",
                         mCustomTabsServiceBound.complete((CustomTabsServiceConnection) conn));
                 getMainThreadHandler().post(() -> {
                     ((CustomTabsServiceConnection) conn).onCustomTabsServiceConnected(
                             getInstrumentation().getComponentName(), sMockCustomTabsClient);
                 });
+                return true;
+            } else {
+                return super.bindService(service, conn, flags);
             }
-            return true;
         }
 
         @Override
@@ -321,18 +328,27 @@ public class CaptivePortalLoginActivityTest {
 
         @Override
         String getDefaultCustomTabsProviderPackage() {
-            return TEST_CUSTOM_TABS_PACKAGE_NAME;
+            if (sMockCustomTabsPackageName != null) {
+                return sMockCustomTabsPackageName;
+            }
+            return super.getDefaultCustomTabsProviderPackage();
         }
 
         @Override
         int getPackageUid(@NonNull final String customTabsProviderPackageName)
                 throws NameNotFoundException {
-            return TEST_CUSTOM_TABS_PROVIDER_UID;
+            if (sMockCustomTabsPackageName != null) {
+                return TEST_CUSTOM_TABS_PROVIDER_UID;
+            }
+            return super.getPackageUid(customTabsProviderPackageName);
         }
 
         @Override
         boolean isMultiNetworkingSupportedByProvider(final String defaultPackageName) {
-            return sIsMultiNetworkingSupportedByProvider;
+            if (sMockCustomTabsPackageName != null) {
+                return sIsMultiNetworkingSupportedByProvider;
+            }
+            return super.isMultiNetworkingSupportedByProvider(defaultPackageName);
         }
 
         @Override
@@ -435,6 +451,7 @@ public class CaptivePortalLoginActivityTest {
         sDownloadServiceBinder = mock(DownloadService.DownloadServiceBinder.class);
         sMockCustomTabsClient = mock(CustomTabsClient.class);
         sMockCaptivePortalLoginMetrics = mock(CaptivePortalLoginMetrics.class);
+        sMockCustomTabsPackageName = null;
 
         MockitoAnnotations.initMocks(this);
         // Use a real (but test) network for the application. The application will pass this
@@ -451,6 +468,9 @@ public class CaptivePortalLoginActivityTest {
         }
         mNetwork = mTestNetworkTracker.getNetwork();
         configNonVpnNetwork();
+        doReturn(CustomTabsSession.createMockSessionForTesting(new ComponentName(
+                TEST_CUSTOM_TABS_PACKAGE_NAME, TEST_CUSTOM_TABS_CLASS))
+        ).when(sMockCustomTabsClient).newSession(any());
         Intents.init();
     }
 
@@ -1242,15 +1262,13 @@ public class CaptivePortalLoginActivityTest {
         return linkProperties;
     }
 
-    private MockCaptivePortal prepareCaptivePortalUsingCustomTabs(
-            boolean isDelegateUidSetSuccessfully, final LinkProperties linkProperties)
-            throws Exception {
+    private MockCaptivePortal prepareMockCustomTabs(
+            boolean isDelegateUidSetSuccessfully, final LinkProperties linkProperties) {
         ActivityScenario.launch(RequestDismissKeyguardActivity.class);
         sIsMultiNetworkingSupportedByProvider = true;
         doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
 
-        intending(hasPackage(TEST_CUSTOM_TABS_PACKAGE_NAME))
-                .respondWith(new ActivityResult(RESULT_OK, null));
+        mockCustomTabsPackage();
         initActivity(TEST_URL);
 
         final MockCaptivePortal cp = getCaptivePortal();
@@ -1263,10 +1281,20 @@ public class CaptivePortalLoginActivityTest {
         return cp;
     }
 
+    private MockCaptivePortal prepareRealCustomTabs() {
+        ActivityScenario.launch(RequestDismissKeyguardActivity.class);
+        sIsMultiNetworkingSupportedByProvider = true;
+        initActivity(TEST_URL);
+        final MockCaptivePortal cp = getCaptivePortal();
+        mActivityScenario.onActivity(a -> cp.mDelegateUidReceiver.onResult(null));
+
+        return cp;
+    }
+
     private void runCaptivePortalUsingCustomTabsTest(boolean isDelegateUidSetSuccessfully,
             final LinkProperties linkProperties) throws Exception {
         final MockCaptivePortal cp =
-                prepareCaptivePortalUsingCustomTabs(isDelegateUidSetSuccessfully, linkProperties);
+                prepareMockCustomTabs(isDelegateUidSetSuccessfully, linkProperties);
 
         final ArgumentCaptor<CustomTabsCallback> captor =
                 ArgumentCaptor.forClass(CustomTabsCallback.class);
@@ -1340,16 +1368,12 @@ public class CaptivePortalLoginActivityTest {
     @FeatureFlag(name = CAPTIVE_PORTAL_CUSTOM_TABS, enabled = true)
     public void testCaptivePortalUsingCustomTabs_closeAppWhenTabHiddenButParentStillResumed()
             throws Exception {
-        final LinkProperties lp = new LinkProperties();
-        prepareCaptivePortalUsingCustomTabs(true /* isDelegateUidSetSuccessfully */, lp);
+        assumeTrue(isChromeInstalled());
+        prepareRealCustomTabs();
+        final UiDevice device = UiDevice.getInstance(getInstrumentation());
+        device.waitForIdle();
 
-        final ArgumentCaptor<CustomTabsCallback> captor =
-                ArgumentCaptor.forClass(CustomTabsCallback.class);
-        verify(sMockCustomTabsClient, timeout(TEST_TIMEOUT_MS)).newSession(captor.capture());
-        final CustomTabsCallback callback = captor.getValue();
-        assertNotNull(callback);
-
-        callback.onNavigationEvent(CustomTabsCallback.TAB_HIDDEN, null);
+        device.pressBack();
 
         waitForDestroyedState();
         assertEquals(DESTROYED, mActivityScenario.getState());
@@ -1386,9 +1410,14 @@ public class CaptivePortalLoginActivityTest {
                 assertNotNull(activity.findViewById(R.id.webview)));
     }
 
-    private void verifyUsingWebViewRatherThanCustomTabs() {
+    private void mockCustomTabsPackage() {
+        sMockCustomTabsPackageName = TEST_CUSTOM_TABS_PACKAGE_NAME;
         intending(hasPackage(TEST_CUSTOM_TABS_PACKAGE_NAME))
                 .respondWith(new ActivityResult(RESULT_OK, null));
+    }
+
+    private void verifyUsingWebViewRatherThanCustomTabs() {
+        mockCustomTabsPackage();
         initActivity(TEST_URL);
         verifyWebViewInitialization();
     }
@@ -1455,8 +1484,7 @@ public class CaptivePortalLoginActivityTest {
         // Turn on the screen and dismiss the keyguard, allow UI automation to select the button.
         ActivityScenario.launch(RequestDismissKeyguardActivity.class);
 
-        final MockCaptivePortal cp = prepareCaptivePortalUsingCustomTabs(
-                true /* isDelegateUidSetSuccessfully */, new LinkProperties());
+        final MockCaptivePortal cp = prepareRealCustomTabs();
         findMoreButtonAndClickTheMenuItem(menuItemIndex);
         return cp;
     }
