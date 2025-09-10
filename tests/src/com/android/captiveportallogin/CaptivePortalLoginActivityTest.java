@@ -24,7 +24,6 @@ import static android.net.ConnectivityManager.EXTRA_CAPTIVE_PORTAL;
 import static android.net.ConnectivityManager.EXTRA_CAPTIVE_PORTAL_URL;
 import static android.net.ConnectivityManager.EXTRA_CAPTIVE_PORTAL_USER_AGENT;
 import static android.net.ConnectivityManager.EXTRA_NETWORK;
-import static android.net.NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED;
 import static android.view.accessibility.AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED;
 
@@ -451,6 +450,7 @@ public class CaptivePortalLoginActivityTest {
             automation.dropShellPermissionIdentity();
         }
         mNetwork = mTestNetworkTracker.getNetwork();
+        configNonVpnNetwork();
         Intents.init();
     }
 
@@ -515,6 +515,9 @@ public class CaptivePortalLoginActivityTest {
             // Dismiss dialogs or notification shade, so the test can interact with the activity.
             activity.sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
         });
+        // Simulate the capabilities update callback as soon as the captive portal is detected. This
+        // should generally happen on activity creation as the callback is registered there.
+        notifyValidatedChangedNotDone(sConnectivityManager.getNetworkCapabilities(mNetwork));
         getInstrumentation().waitForIdleSync();
     }
 
@@ -559,6 +562,7 @@ public class CaptivePortalLoginActivityTest {
         }
         doReturn(nonVpnCapabilities).when(sConnectivityManager).getNetworkCapabilities(
                 mNetwork);
+        doReturn(new LinkProperties()).when(sConnectivityManager).getLinkProperties(mNetwork);
     }
 
     private void configVpnNetwork() {
@@ -914,7 +918,6 @@ public class CaptivePortalLoginActivityTest {
         linkProperties.setCaptivePortalData(captivePortalData);
 
         when(sConnectivityManager.getLinkProperties(mNetwork)).thenReturn(linkProperties);
-        configNonVpnNetwork();
         initActivity("https://tc.example.com/");
 
         // Verify that the correct venue friendly name is used
@@ -925,7 +928,6 @@ public class CaptivePortalLoginActivityTest {
 
     @Test @SdkSuppress(maxSdkVersion = Build.VERSION_CODES.Q)
     public void testWifiSsid_Q() throws Exception {
-        configNonVpnNetwork();
         initActivity("https://portal.example.com/");
         mActivityScenario.onActivity(activity ->
                 assertEquals(activity.getActionBar().getTitle(),
@@ -936,7 +938,6 @@ public class CaptivePortalLoginActivityTest {
 
     @Test @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
     public void testWifiSsid() throws Exception {
-        configNonVpnNetwork();
         initActivity("https://portal.example.com/");
         mActivityScenario.onActivity(activity ->
                 assertEquals(activity.getActionBar().getTitle(),
@@ -1251,13 +1252,6 @@ public class CaptivePortalLoginActivityTest {
         intending(hasPackage(TEST_CUSTOM_TABS_PACKAGE_NAME))
                 .respondWith(new ActivityResult(RESULT_OK, null));
         initActivity(TEST_URL);
-
-        // Simulate the capabilities update callback with NET_CAPABILITY_CAPTIVE_PORTAL as
-        // soon as the captive portal is detected. This ensures 'mIsPortal' is initialized
-        // before the 'onNavigationEvent' callback is triggered.
-        final NetworkCapabilities nc = new NetworkCapabilities();
-        nc.setCapability(NET_CAPABILITY_CAPTIVE_PORTAL, true);
-        notifyValidatedChangedNotDone(nc);
 
         final MockCaptivePortal cp = getCaptivePortal();
         if (isDelegateUidSetSuccessfully) {
@@ -1615,8 +1609,6 @@ public class CaptivePortalLoginActivityTest {
     public void testCaptivePortalMetrics_fallbackToWebview_notSupportMultiNetwork()
             throws Exception {
         sIsMultiNetworkingSupportedByProvider = false;
-        final LinkProperties linkProperties = new LinkProperties();
-        doReturn(linkProperties).when(sConnectivityManager).getLinkProperties(mNetwork);
         verifyUsingWebViewRatherThanCustomTabs();
 
         final NetworkCapabilities nc = new NetworkCapabilities();
