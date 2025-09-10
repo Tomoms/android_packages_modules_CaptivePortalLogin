@@ -22,14 +22,14 @@ import static android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED;
 import static com.android.captiveportallogin.CaptivePortalLoginFlags.CAPTIVE_PORTAL_CUSTOM_TABS;
 import static com.android.captiveportallogin.CaptivePortalLoginFlags.USE_ANY_CUSTOM_TAB_PROVIDER;
 import static com.android.captiveportallogin.DownloadService.isDirectlyOpenType;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_UNWANTED;
+import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_WANTED_AS_IS;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_FEATURE_NOT_ENABLED;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_CCT;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_NOT_SUPPORT_MULTI_NETWORK;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_PRIVATE_DNS_ENABLED_V_AND_BELOW;
 import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__REASON__REASON_USE_CLASSIC_VIEW;
-import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_SUCCESS;
-import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_UNWANTED;
-import static com.android.os.corenetworking.captiveportallogin.CaptivePortalLoginStatsLog.CAPTIVE_PORTAL_LOGIN_REPORTED__PORTAL_RESULT__CAPTIVE_PORTAL_RESULT_WANTED_AS_IS;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -52,7 +52,6 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Insets;
-import android.graphics.Rect;
 import android.net.CaptivePortal;
 import android.net.CaptivePortalData;
 import android.net.ConnectivityManager;
@@ -195,6 +194,8 @@ public class CaptivePortalLoginActivity extends Activity {
             "com.android.captiveportallogin.EXTRA_USE_CLASSIC_VIEW";
     private static final String EXTRA_CUSTOM_TABS_INSTANCE_TOKEN =
             "com.android.captiveportallogin.CUSTOM_TABS_INSTANCE_TOKEN";
+    private static final String CUSTOM_TAB_EXTRA_KEEPALIVE_SERVICE =
+            "android.support.customtabs.extra.KEEP_ALIVE";
     private static final int DO_NOT_USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE = 1001;
     private static final int USE_THIS_NETWORK_PENDING_INTENT_REQUEST_CODE = 1002;
     private static final int USE_CLASSIC_VIEW_PENDING_INTENT_REQUEST_CODE = 1003;
@@ -272,10 +273,12 @@ public class CaptivePortalLoginActivity extends Activity {
             if (navigationEvent == TAB_HIDDEN) {
                 // Run on UI thread to make sure mIsResumed is correctly visible.
                 mParent.runOnUiThread(() -> {
-                    // The tab is hidden when the browser's activity is hidden : screen off,
+                    // The tab is hidden when the browser's activity is hidden: screen off,
                     // home button, or press the close button on the tab. In the last case,
                     // close the app. The activity behind the tab is only resumed in that case.
-                    if (mParent.mIsResumed) mParent.done(Result.DISMISSED);
+                    if (mParent.mIsResumed) {
+                        mParent.finishAndRemoveTask();
+                    }
                 });
             }
         }
@@ -338,23 +341,6 @@ public class CaptivePortalLoginActivity extends Activity {
                 @NonNull CustomTabsClient client) {
             Log.d(TAG, "CustomTabs service connected");
             final CustomTabsSession session = client.newSession(mParent.mPersistentState.mCallback);
-            // TODO : recompute available space when the app changes sizes
-            final View remainingSpaceView = mParent.findViewById(
-                    R.id.custom_tab_header_remaining_space);
-            int availableSpace = remainingSpaceView.getHeight();
-            if (availableSpace < 100) {
-                // If for some reason the height of the view can't be obtained, do not crash.
-                // This used to happen when this code would run before the first layout pass.
-                // This bug should be fixed now, but layout is notoriously difficult to get and
-                // if for any reason there is still an issue it is better to use this estimate
-                // than to crash.
-                Log.wtf(TAG, "Remaining space can't be obtained. Layout not done ?");
-                final Rect windowSize =
-                        mParent.getWindowManager().getCurrentWindowMetrics().getBounds();
-                final int top = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
-                        96 /* dp */, mParent.getResources().getDisplayMetrics());
-                availableSpace = (windowSize.bottom - windowSize.top) - top;
-            }
             final int size = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
                     24 /* dp */, mParent.getResources().getDisplayMetrics());
             final Bitmap emptyIcon = Bitmap.createBitmap(size /* width */, size /* height */,
@@ -371,9 +357,6 @@ public class CaptivePortalLoginActivity extends Activity {
                     // Do not show a title to avoid pages pretend they are part of the Android
                     // system.
                     .setShowTitle(false /* showTitle */)
-                    // Have the tab take up the available space under the header.
-                    .setInitialActivityHeightPx(availableSpace,
-                            CustomTabsIntent.ACTIVITY_HEIGHT_FIXED)
                     // Don't show animations, because there is no content to animate from or to in
                     // this activity. As such, set the res IDs to zero, which code for no animation.
                     .setStartAnimations(mParent, 0, 0)
@@ -403,6 +386,8 @@ public class CaptivePortalLoginActivity extends Activity {
                 builder.addMenuItem(item.first, item.second);
             }
             final CustomTabsIntent customTabsIntent = builder.build();
+            customTabsIntent.intent.putExtra(CUSTOM_TAB_EXTRA_KEEPALIVE_SERVICE,
+                    new Intent(mParent.getApplicationContext(), CustomTabsKeepAliveService.class));
             // Remove Referrer Header from HTTP probe packet by setting an empty Uri
             // instance in EXTRA_REFERRER, make sure users using custom tabs have the
             // same experience as the custom tabs browser.
