@@ -361,6 +361,8 @@ public class CaptivePortalLoginActivity extends Activity {
                 return;
             }
             final String action = intent.getAction();
+            // TODO: if done was called already, but the portal closed again, these actions should
+            // not be ignored. Currently done will not do anything if called multiple times.
             if (action.equals(ACTION_CUSTOM_TABS_MENU_ITEM_DO_NOT_USE_THIS_NETWORK_CLICKED)) {
                 done(Result.UNWANTED);
             } else if (action.equals(ACTION_CUSTOM_TABS_MENU_ITEM_USE_THIS_NETWORK_CLICKED)) {
@@ -1036,7 +1038,11 @@ public class CaptivePortalLoginActivity extends Activity {
             @Override
             public void onLost(Network lostNetwork) {
                 // If the network disappears while the app is up, exit.
-                if (mNetwork.equals(lostNetwork)) done(Result.UNWANTED);
+                if (mNetwork.equals(lostNetwork) && !done(Result.UNWANTED)) {
+                    // If done was already called, for example because the user logged in, just
+                    // finish the activity.
+                    finishAndRemoveTask();
+                }
             }
 
             @Override
@@ -1206,6 +1212,8 @@ public class CaptivePortalLoginActivity extends Activity {
             // Dismiss the portal (if using the Webview) or move the portal to backstack
             // (if using the custom tabs) when login is no longer needed since network has
             // validated.
+            // TODO: this should also work if called twice. For now done does nothing after the
+            // first call.
             done(Result.DISMISSED);
         }
     }
@@ -1259,10 +1267,15 @@ public class CaptivePortalLoginActivity extends Activity {
         }
     }
 
-    private void done(Result result) {
+    /**
+     * Dismiss the portal app with the specified result.
+     *
+     * @return true if the portal was dismissed, false if ignored because this was called already.
+     */
+    private boolean done(Result result) {
         if (isDone.getAndSet(true)) {
             // isDone was already true: done() already called
-            return;
+            return false;
         }
         if (DBG) {
             Log.d(TAG, String.format("Result %s for %s", result.name(), mUrl));
@@ -1291,9 +1304,10 @@ public class CaptivePortalLoginActivity extends Activity {
             // elsewhere). Therefore, continue ignoring upcoming network validation events to ensure
             // the portal remains open.
             moveTaskToBack(true);
-            return;
+            return true;
         }
         finishAndRemoveTask();
+        return true;
     }
 
     @Override
