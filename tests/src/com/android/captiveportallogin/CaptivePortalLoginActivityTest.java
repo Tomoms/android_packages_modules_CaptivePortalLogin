@@ -120,6 +120,8 @@ import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsClient;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
+import androidx.browser.customtabs.CustomTabsSession;
+import androidx.browser.customtabs.EngagementSignalsCallback;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.espresso.intent.Intents;
 import androidx.test.espresso.web.webdriver.Locator;
@@ -183,6 +185,7 @@ public class CaptivePortalLoginActivityTest {
     private static final String TEST_FRIENDLY_NAME = "Network friendly name";
     private static final String TEST_PORTAL_HOSTNAME = "localhost";
     private static final String TEST_CUSTOM_TABS_PACKAGE_NAME = "com.android.customtabs";
+    private static final String TEST_CUSTOM_TABS_CLASS = "com.android.customtabs.MockCustomTabs";
     private static final String TEST_WIFI_CONFIG_TYPE = "application/x-wifi-config";
     private static final String TEST_PRIVATE_DNS_SERVER = "dns.server";
     private static final String TEST_DOWNLOAD_SERVICE_COMPONENT_CLASS_NAME =
@@ -341,6 +344,12 @@ public class CaptivePortalLoginActivityTest {
         }
 
         @Override
+        boolean isFeatureNotChickenedOut(String name) {
+            if (sFeatureFlags.get(name) == null) return true;
+            return sFeatureFlags.get(name);
+        }
+
+        @Override
         boolean getDeviceConfigPropertyBoolean(final String name, boolean defaultValue) {
             return defaultValue;
         }
@@ -449,6 +458,9 @@ public class CaptivePortalLoginActivityTest {
             automation.dropShellPermissionIdentity();
         }
         mNetwork = mTestNetworkTracker.getNetwork();
+        doReturn(CustomTabsSession.createMockSessionForTesting(new ComponentName(
+                TEST_CUSTOM_TABS_PACKAGE_NAME, TEST_CUSTOM_TABS_CLASS))
+        ).when(sMockCustomTabsClient).newSession(any());
     }
 
     private static WifiInfo makeWifiInfo() {
@@ -1387,7 +1399,8 @@ public class CaptivePortalLoginActivityTest {
         final CustomTabsCallback callback = captor.getValue();
         assertNotNull(callback);
 
-        callback.onNavigationEvent(CustomTabsCallback.TAB_HIDDEN, null);
+        ((EngagementSignalsCallback) callback).onSessionEnded(
+                true /* didUserInteract */, null /* extras */);
 
         waitForDestroyedState();
         assertEquals(DESTROYED, mActivityScenario.getState());
