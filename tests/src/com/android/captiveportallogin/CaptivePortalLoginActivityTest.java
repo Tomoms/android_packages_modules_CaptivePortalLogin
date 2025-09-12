@@ -136,7 +136,6 @@ import androidx.test.uiautomator.UiSelector;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreAfter;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
-import com.android.testutils.SkipPresubmit;
 import com.android.testutils.TestNetworkTracker;
 import com.android.testutils.com.android.testutils.SetFeatureFlagsRule;
 import com.android.testutils.com.android.testutils.SetFeatureFlagsRule.FeatureFlag;
@@ -170,7 +169,6 @@ import fi.iki.elonen.NanoHTTPD;
 
 @RunWith(AndroidJUnit4.class)
 @SmallTest
-@SkipPresubmit(reason = "Temporary skip for very flaky tests: b/242680995")
 public class CaptivePortalLoginActivityTest {
     private static final String TEST_URL = "http://android.test.com";
     private static final int TEST_NETID = 1234;
