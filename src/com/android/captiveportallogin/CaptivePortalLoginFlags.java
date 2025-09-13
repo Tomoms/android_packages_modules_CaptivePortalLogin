@@ -32,4 +32,12 @@ public class CaptivePortalLoginFlags {
      * for testing.
      */
     public static final String USE_ANY_CUSTOM_TAB_PROVIDER = "use_any_custom_tab_provider";
+
+    /**
+     * Experiment flag to use a full custom tab instead of a partial custom tab.
+     *
+     * <p>Enabled by default. This is only used if {@link #CAPTIVE_PORTAL_CUSTOM_TABS} is enabled,
+     * or the custom tab is forced on (for example if the network operator opted in).
+     */
+    public static final String USE_FULL_CUSTOM_TAB = "use_full_custom_tab";
 }
