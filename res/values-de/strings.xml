@@ -25,8 +25,7 @@
     <string name="page_info_address" msgid="1290683284404217554">"Adresse:"</string>
     <string name="page_info" msgid="46593086046896385">"Seiteninformationen"</string>
     <string name="action_use_old_interface" msgid="6140392789310499295">"Alte Oberfläche verwenden"</string>
-    <!-- no translation found for action_use_classic_view (948846396167837386) -->
-    <skip />
+    <string name="action_use_classic_view" msgid="948846396167837386">"Klassische Ansicht verwenden"</string>
     <string name="downloading_paramfile" msgid="685182551665849043">"%1$s wird heruntergeladen"</string>
     <string name="download_completed" msgid="5430865338124330584">"Download abgeschlossen"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"%1$s konnte nicht heruntergeladen werden"</string>

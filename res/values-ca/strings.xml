@@ -25,8 +25,7 @@
     <string name="page_info_address" msgid="1290683284404217554">"Adreça:"</string>
     <string name="page_info" msgid="46593086046896385">"Informació de la pàgina"</string>
     <string name="action_use_old_interface" msgid="6140392789310499295">"Utilitza la interfície anterior"</string>
-    <!-- no translation found for action_use_classic_view (948846396167837386) -->
-    <skip />
+    <string name="action_use_classic_view" msgid="948846396167837386">"Utilitza la vista clàssica"</string>
     <string name="downloading_paramfile" msgid="685182551665849043">"S\'està baixant %1$s"</string>
     <string name="download_completed" msgid="5430865338124330584">"S\'ha completat la baixada"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"No s\'ha pogut baixar %1$s"</string>
