@@ -21,12 +21,11 @@
     <string name="ssl_error_view_certificate" msgid="3447891108083278449">"Прикажи сертификат"</string>
     <string name="custom_scheme_warning" msgid="1809266150423969087">"Мрежа којој покушавате да се придружите захтева отварање још једне апликације."</string>
     <string name="custom_scheme_example" msgid="7126568152528588592">"На пример, страница за пријављивање можда захтева одређену апликацију ради потврде идентитета"</string>
-    <string name="ok" msgid="6584612582120777209">"Потврди"</string>
+    <string name="ok" msgid="6584612582120777209">"Важи"</string>
     <string name="page_info_address" msgid="1290683284404217554">"Адреса:"</string>
     <string name="page_info" msgid="46593086046896385">"Информације о страници"</string>
     <string name="action_use_old_interface" msgid="6140392789310499295">"Користи стари интерфејс"</string>
-    <!-- no translation found for action_use_classic_view (948846396167837386) -->
-    <skip />
+    <string name="action_use_classic_view" msgid="948846396167837386">"Користите класични приказ"</string>
     <string name="downloading_paramfile" msgid="685182551665849043">"Преузима се датотека %1$s"</string>
     <string name="download_completed" msgid="5430865338124330584">"Преузимање је завршено"</string>
     <string name="error_downloading_paramfile" msgid="2431082160412515409">"Преузимање датотеке %1$s није успело"</string>
